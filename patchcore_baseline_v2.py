@@ -1,59 +1,51 @@
-"""Spacepresso baseline v4 — PatchCore + faster coreset selection.
+"""Spacepresso baseline v5 — adds DINOv2 ViT-S/14 backbone.
 
-Drop-in successor to patchcore_baseline_v3.py. v3 already fixed the OOM
-in coreset selection by keeping the full feature tensor on CPU and
-projecting only chunks to GPU. v4 fixes the *speed* of the selection
-itself, which v3 inherited unchanged from v2.
+Drop-in successor to v4. All v4 efficiency tricks are preserved unchanged:
 
-# Why v3 coreset selection was slow
+  - CPU-resident feature tensor, 32-d random projection on GPU for coreset
+  - Mini-batch greedy k-center (sync-free, ~50-100x faster than naive)
+  - fp16 memory bank + chunked NN scoring (score_chunk × memory_chunk)
+  - TTA-aware scoring with average over flips
+  - Per-(class, anomaly_type) local-AP harness
 
-The inner loop did:
+What v5 adds (entirely additive — no behaviour change for ResNet runs):
 
-      idx = int(torch.argmax(min_dist).item())
+  (1) `--backbone dinov2_vits14` (also `dinov2_vitb14`, `dinov2_vitl14`).
+      Loaded via torch.hub from facebookresearch/dinov2. Cached under
+      $TORCH_HOME/hub.
 
-`.item()` is a blocking GPU→CPU sync. PyTorch flushes the entire CUDA
-pipeline, hands back a Python int, and only THEN queues the next
-iteration's kernels. With 5% coreset on 6M patches that's 300,000 sync
-points. Measured per-iter cost on a shared L4 was ~38 ms vs ~2 ms of
-actual compute — the rest was pure sync overhead.
+  (2) DINOv2 forward path uses `get_intermediate_layers(..., reshape=True,
+      norm=True)` to return one (B, D, H, W) feature map per requested
+      transformer block. Patchify (3x3 AvgPool) + multi-layer
+      concatenation pipeline is unchanged — for ViT all "layers" already
+      share the same spatial grid so the interpolation step in
+      `patchify_and_combine` is a no-op.
 
-# What v4 changes
+  (3) Input-size validation: DINOv2 requires input H, W divisible by the
+      14-px patch size. Use 392 (28x28 tokens, "exp5 equivalent") or 518
+      (37x37, DINOv2's native pretraining resolution).
 
-A new CLI flag `--coreset-algo {exact,minibatch}` (default: `minibatch`).
-Two new internal helpers; the call site in `fit()` is otherwise unchanged.
+  (4) `--feature-layers` for DINOv2 means transformer block indices
+      (0..n_blocks-1). A reasonable default for ViT-S/14 (12 blocks) is
+      `--feature-layers 3 6 9 11`. ResNet runs are unaffected (default
+      remains 2 3).
 
-(1) `_kcenter_exact_gpu` — same selection as v3 but `idx` stays a 0-d
-    GPU tensor through the iteration. Indexing, distance, and min are
-    all queued on the GPU without flushing. A blocking sync still
-    happens at log time (every 5%), so progress is still visible. ~5-10x
-    faster than v3 in practice.
+Memory budget on a 24 GB L4 with DINOv2 ViT-S/14 + input 518 +
+4 layers + coreset 5% + score-batch 8:
 
-(2) `_kcenter_minibatch_gpu` — selects `--coreset-batch` (default 64)
-    farthest points per ROUND instead of one per iteration. After each
-    round, `min_dist` is updated against ALL new centers at once via
-    one `cdist`. ~50-100x faster than v3 with negligible quality loss
-    for batch sizes ≤ 256 — this is the standard approximation in
-    production PatchCore deployments (see Sener & Savarese 2018 §B).
+  - Feature extraction:  ~1 GB GPU peak
+  - Coreset projection: ~200-400 MB GPU (the 32-d projected feats)
+  - Memory bank (fp16):  ~30 MB per class
+  - Scoring matmul:     score_chunk × memory_chunk × 2 B = ~130 MB
 
-The projection step (CPU features → GPU 32-d, in `project_chunk`-sized
-slices) is unchanged from v3.
+Pre-flight (run once on a node with internet, e.g. login node):
 
-# Quality note
+      python -c "import torch; \
+          torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14', \
+                          trust_repo=True)"
 
-Mini-batch greedy k-center is an approximation: within one round, the
-top-`B` farthest points are chosen against the OLD `min_dist`, so the
-B-th choice doesn't "see" that the 1st has just been added. For
-B ≤ ~256 the resulting coreset is empirically very close to exact — the
-PatchCore paper itself uses an approximate greedy variant. If you want
-to verify on your data, run one class with `--coreset-algo exact` and
-one with `--coreset-algo minibatch` and compare pixel-AP.
-
-# CLI compatibility
-
-The exp5/exp6 sweep scripts run unchanged. New optional knobs:
-
-      --coreset-algo {exact, minibatch}    (default: minibatch)
-      --coreset-batch INT                  (default: 64)
+This caches the ~88 MB checkpoint under ~/.cache/torch/hub/checkpoints
+so compute nodes can read it offline.
 """
 from __future__ import annotations
 
@@ -97,10 +89,38 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD  = (0.229, 0.224, 0.225)
 VIEW_RE = re.compile(r"^(?P<base>.+?)_view(?P<v>\d+)\.[A-Za-z]+$")
 
+# Channel/dim per layer-or-block, by backbone. For DINOv2 every block has
+# the same embed_dim so the dict is a constant fill.
 RESNET_CHANNELS = {
     "wide_resnet50_2": {1: 256, 2: 512, 3: 1024, 4: 2048},
     "resnet50":        {1: 256, 2: 512, 3: 1024, 4: 2048},
     "resnet18":        {1: 64,  2: 128, 3: 256,  4: 512},
+}
+DINOV2_DIMS = {
+    "dinov2_vits14": 384,    # 12 blocks
+    "dinov2_vitb14": 768,    # 12 blocks
+    "dinov2_vitl14": 1024,   # 24 blocks
+}
+DINOV2_NBLOCKS = {
+    "dinov2_vits14": 12,
+    "dinov2_vitb14": 12,
+    "dinov2_vitl14": 24,
+}
+RESNET_BACKBONES = set(RESNET_CHANNELS.keys())
+DINOV2_BACKBONES = set(DINOV2_DIMS.keys())
+ALL_BACKBONES    = sorted(RESNET_BACKBONES | DINOV2_BACKBONES)
+
+BACKBONE_CHANNELS: dict[str, dict[int, int]] = dict(RESNET_CHANNELS)
+for _bb in DINOV2_BACKBONES:
+    BACKBONE_CHANNELS[_bb] = {i: DINOV2_DIMS[_bb] for i in range(DINOV2_NBLOCKS[_bb])}
+
+BACKBONE_SHORT = {
+    "wide_resnet50_2": "wrn50",
+    "resnet50":        "rn50",
+    "resnet18":        "rn18",
+    "dinov2_vits14":   "dnv2s14",
+    "dinov2_vitb14":   "dnv2b14",
+    "dinov2_vitl14":   "dnv2l14",
 }
 
 
@@ -132,7 +152,7 @@ def now_hms(): return time.strftime("%H:%M:%S")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Dataset (unchanged from v3)
+# Dataset (unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class ImageRecord:
@@ -242,31 +262,72 @@ def make_loader(records, batch_size, input_size,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Feature extractor (unchanged from v3)
+# Feature extractor — v5 dual ResNet / DINOv2
 # ─────────────────────────────────────────────────────────────────────────────
 class FeatureExtractor(nn.Module):
+    """Dual-backbone feature extractor.
+
+    For ResNet backbones, returns a dict {layer_idx: (B, C, H, W)} for
+    each requested ResNet stage in {1, 2, 3, 4}.
+
+    For DINOv2 backbones, returns a dict {block_idx: (B, D, H, W)} for
+    each requested transformer block (0..n_blocks-1). All blocks share
+    the same spatial grid (H = W = input_size / 14) and same channel
+    dim (= embed_dim).
+
+    The downstream `patchify_and_combine` is agnostic to the source —
+    the shapes carry all the information it needs.
+    """
+
     def __init__(self, backbone: str = "wide_resnet50_2"):
         super().__init__()
-        if backbone == "wide_resnet50_2":
-            m = wide_resnet50_2(weights=Wide_ResNet50_2_Weights.IMAGENET1K_V2)
-        elif backbone == "resnet50":
-            m = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
-        elif backbone == "resnet18":
-            m = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        self.backbone_name = backbone
+        if backbone in RESNET_BACKBONES:
+            self.kind = "resnet"
+            if backbone == "wide_resnet50_2":
+                m = wide_resnet50_2(weights=Wide_ResNet50_2_Weights.IMAGENET1K_V2)
+            elif backbone == "resnet50":
+                m = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+            elif backbone == "resnet18":
+                m = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+            else:
+                raise ValueError(f"unknown resnet: {backbone}")
+            self.stem = nn.Sequential(m.conv1, m.bn1, m.relu, m.maxpool)
+            self.layer1 = m.layer1
+            self.layer2 = m.layer2
+            self.layer3 = m.layer3
+            self.layer4 = m.layer4
+            self.dinov2 = None
+            self.patch_size = None
+            self.n_blocks = None
+        elif backbone in DINOV2_BACKBONES:
+            self.kind = "dinov2"
+            # `trust_repo=True` avoids the interactive prompt; the model is
+            # downloaded once and cached at $TORCH_HOME/hub.
+            self.dinov2 = torch.hub.load(
+                "facebookresearch/dinov2", backbone,
+                trust_repo=True, source="github",
+            )
+            self.dinov2.eval()
+            self.patch_size = 14
+            self.n_blocks = DINOV2_NBLOCKS[backbone]
+            self.stem = self.layer1 = self.layer2 = None
+            self.layer3 = self.layer4 = None
         else:
             raise ValueError(f"unknown backbone: {backbone}")
-        self.backbone_name = backbone
-        self.stem = nn.Sequential(m.conv1, m.bn1, m.relu, m.maxpool)
-        self.layer1 = m.layer1
-        self.layer2 = m.layer2
-        self.layer3 = m.layer3
-        self.layer4 = m.layer4
         self.eval()
-        for p in self.parameters(): p.requires_grad_(False)
+        for p in self.parameters():
+            p.requires_grad_(False)
 
     @torch.inference_mode()
     def forward(self, x: torch.Tensor,
                 layers: tuple[int, ...] = (2, 3)) -> dict[int, torch.Tensor]:
+        if self.kind == "resnet":
+            return self._forward_resnet(x, layers)
+        return self._forward_dinov2(x, layers)
+
+    def _forward_resnet(self, x: torch.Tensor,
+                        layers: tuple[int, ...]) -> dict[int, torch.Tensor]:
         out: dict[int, torch.Tensor] = {}
         need_4 = 4 in layers
         x = self.stem(x)
@@ -281,10 +342,35 @@ class FeatureExtractor(nn.Module):
             out[4] = x
         return out
 
+    def _forward_dinov2(self, x: torch.Tensor,
+                         layers: tuple[int, ...]) -> dict[int, torch.Tensor]:
+        B, _, H, W = x.shape
+        if H % self.patch_size != 0 or W % self.patch_size != 0:
+            raise ValueError(
+                f"DINOv2 requires H, W divisible by {self.patch_size}; "
+                f"got ({H}, {W}).")
+        for l in layers:
+            if not (0 <= l < self.n_blocks):
+                raise ValueError(
+                    f"DINOv2 block index {l} out of range "
+                    f"[0, {self.n_blocks - 1}] for {self.backbone_name}.")
+        # Returns a tuple of (B, D, H/14, W/14) feature maps, one per
+        # requested block index, with final LayerNorm applied.
+        outs = self.dinov2.get_intermediate_layers(
+            x, n=list(layers), reshape=True, norm=True,
+        )
+        return {l: outs[i] for i, l in enumerate(layers)}
+
 
 def patchify_and_combine(maps: dict[int, torch.Tensor],
                           patch_size: int = 3,
                           target_layer: int = 2) -> torch.Tensor:
+    """Local 3x3 aggregation + multi-layer concatenation + L2-normalise.
+
+    For ResNet the requested layers have different spatial sizes — they
+    get bilinearly upsampled to the spatial grid of `target_layer`.
+    For DINOv2 all blocks share the same grid so the interpolation step
+    is a no-op (same shape in, same shape out)."""
     assert target_layer in maps, \
         f"target_layer={target_layer} not in {list(maps)}"
     H, W = maps[target_layer].shape[-2:]
@@ -304,17 +390,7 @@ def patchify_and_combine(maps: dict[int, torch.Tensor],
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Greedy k-center coreset — v4
-#
-# Two algorithms, both operate on a 32-d random projection of CPU features
-# (projection runs entirely on GPU; CPU features stay put — same as v3).
-#
-#   "exact"     — sync-free O(N*k) exact greedy. `idx` stays as a 0-d GPU
-#                 tensor so the inner loop queues kernels without
-#                 stopping for `.item()`. ~5-10x faster than v3.
-#   "minibatch" — pick `batch_size` farthest points per round, update
-#                 `min_dist` against all of them at once. ~50-100x faster
-#                 than v3 with negligible quality loss for batch ≤ 256.
+# Greedy k-center coreset (unchanged from v4)
 # ─────────────────────────────────────────────────────────────────────────────
 @torch.inference_mode()
 def _project_cpu_features_to_gpu(features_cpu: torch.Tensor,
@@ -322,17 +398,11 @@ def _project_cpu_features_to_gpu(features_cpu: torch.Tensor,
                                   seed: int,
                                   projection_dim: int,
                                   project_chunk: int) -> torch.Tensor:
-    """Random Gaussian projection from CPU features to GPU low-dim rep.
-    See v3 docstring for the OOM rationale; the projection itself is
-    unchanged.
-    """
     N, D = features_cpu.shape
     if projection_dim >= D:
         raise ValueError(
             f"projection_dim={projection_dim} must be < D={D} for the "
-            f"CPU-features path (otherwise we'd materialise the full "
-            f"feature tensor on the GPU — the very thing we are avoiding)."
-        )
+            f"CPU-features path.")
     g = torch.Generator(device=device).manual_seed(seed)
     P = torch.randn(D, projection_dim, generator=g, device=device,
                     dtype=torch.float32) / math.sqrt(projection_dim)
@@ -364,37 +434,27 @@ def _project_cpu_features_to_gpu(features_cpu: torch.Tensor,
 @torch.inference_mode()
 def _kcenter_exact_gpu(feats_proj: torch.Tensor,
                         n_select: int, seed: int) -> torch.Tensor:
-    """Sync-free exact greedy k-center on GPU. Same selection as v3.
-    Returns indices on GPU (caller moves to CPU).
-    """
     device = feats_proj.device
     N = feats_proj.shape[0]
     n_select = min(n_select, N)
-
     rng = torch.Generator(device=device).manual_seed(seed + 1)
     first_t = torch.randint(0, N, (1,), generator=rng, device=device)
-    first = int(first_t.item())     # one sync at setup, then no more
+    first = int(first_t.item())
     selected = torch.empty(n_select, dtype=torch.long, device=device)
     selected[0] = first
-
-    # Euclidean (cdist) — same convention as the rest of the pipeline.
     first_pt = feats_proj[first:first + 1]
-    min_dist = torch.cdist(feats_proj, first_pt).squeeze(1)  # (N,)
-    min_dist[first] = -1.0   # never re-pick
-
+    min_dist = torch.cdist(feats_proj, first_pt).squeeze(1)
+    min_dist[first] = -1.0
     log_every = max(1, n_select // 20)
     t0 = time.time()
     for i in range(1, n_select):
-        # 0-d GPU tensor — NOT a Python int. No sync.
         idx_t = torch.argmax(min_dist)
         selected[i] = idx_t
-        # GPU indexing with GPU tensor → (D,), unsqueeze to (1, D).
         new_pt = feats_proj[idx_t].unsqueeze(0)
         d_new = torch.cdist(feats_proj, new_pt).squeeze(1)
         min_dist = torch.minimum(min_dist, d_new)
         min_dist[idx_t] = -1.0
         if i % log_every == 0 or i == n_select - 1:
-            # Sync ONLY at log time, every 5% of progress.
             md_max = float(min_dist.max().clamp_min(0.0))
             print(f"      coreset (exact): {i + 1}/{n_select} "
                   f"({(i + 1) / n_select * 100:>5.1f}%)  "
@@ -407,16 +467,6 @@ def _kcenter_exact_gpu(feats_proj: torch.Tensor,
 def _kcenter_minibatch_gpu(feats_proj: torch.Tensor,
                             n_select: int, seed: int,
                             batch_size: int) -> torch.Tensor:
-    """Mini-batch greedy k-center. Pick `batch_size` farthest points per
-    round and update `min_dist` against all of them at once.
-
-    Per-round GPU peak:
-      cdist output  (N × batch_size × 4 B)   +  feats_proj  +  min_dist
-      At N=6M, batch_size=64:  ~1.5 GB   +   768 MB   +   24 MB
-                          B=256: ~6 GB    +   768 MB   +   24 MB
-
-    Returns indices on GPU.
-    """
     device = feats_proj.device
     N = feats_proj.shape[0]
     n_select = min(n_select, N)
@@ -424,17 +474,14 @@ def _kcenter_minibatch_gpu(feats_proj: torch.Tensor,
         raise ValueError(f"batch_size must be >= 1, got {batch_size}")
     if n_select <= 1:
         return torch.zeros(max(n_select, 0), dtype=torch.long, device=device)
-
     rng = torch.Generator(device=device).manual_seed(seed + 1)
     first = int(torch.randint(0, N, (1,), generator=rng,
                                device=device).item())
     selected = torch.empty(n_select, dtype=torch.long, device=device)
     selected[0] = first
-
     first_pt = feats_proj[first:first + 1]
     min_dist = torch.cdist(feats_proj, first_pt).squeeze(1)
     min_dist[first] = -1.0
-
     n_chosen = 1
     n_rounds_total = (n_select - 1 + batch_size - 1) // batch_size
     log_every_rounds = max(1, n_rounds_total // 20)
@@ -442,19 +489,14 @@ def _kcenter_minibatch_gpu(feats_proj: torch.Tensor,
     t0 = time.time()
     while n_chosen < n_select:
         b = min(batch_size, n_select - n_chosen)
-        # Top-b farthest from current min_dist (negative-filled positions
-        # can't be picked since they're -1.0 < all real distances).
-        _, top_idx = torch.topk(min_dist, b, largest=True)  # (b,) on GPU
+        _, top_idx = torch.topk(min_dist, b, largest=True)
         selected[n_chosen:n_chosen + b] = top_idx
-
-        # Update min_dist against all b new centers at once.
-        new_pts = feats_proj[top_idx]                  # (b, D)
-        new_d = torch.cdist(feats_proj, new_pts)       # (N, b) Euclidean
-        new_d_min = new_d.min(dim=1).values            # (N,)
+        new_pts = feats_proj[top_idx]
+        new_d = torch.cdist(feats_proj, new_pts)
+        new_d_min = new_d.min(dim=1).values
         min_dist = torch.minimum(min_dist, new_d_min)
         min_dist[top_idx] = -1.0
         del new_d, new_d_min, new_pts
-
         n_chosen += b
         round_idx += 1
         if round_idx % log_every_rounds == 0 or n_chosen == n_select:
@@ -477,18 +519,8 @@ def greedy_coreset(features_cpu: torch.Tensor,
                     project_chunk: int = 65536,
                     algo: str = "minibatch",
                     batch_size: int = 64) -> torch.Tensor:
-    """Greedy k-center on CPU-resident features.
-
-    `algo` ∈ {"exact", "minibatch"}:
-      "exact"     — same selection as v3 but sync-free. ~5-10x faster.
-      "minibatch" — pick `batch_size` farthest points per round. ~50-100x
-                    faster than v3 with negligible quality loss for
-                    typical batch sizes.
-    Returns selected indices as a CPU LongTensor of shape (n_select,).
-    """
     assert features_cpu.device.type == "cpu", (
-        f"v4 expects CPU features; got {features_cpu.device}."
-    )
+        f"v5 expects CPU features; got {features_cpu.device}.")
     if algo not in ("exact", "minibatch"):
         raise ValueError(f"coreset_algo must be 'exact' or 'minibatch', "
                          f"got {algo!r}")
@@ -508,12 +540,16 @@ def greedy_coreset(features_cpu: torch.Tensor,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Target-layer auto-resolution (unchanged from v3)
+# Target-layer auto-resolution
 # ─────────────────────────────────────────────────────────────────────────────
 def resolve_target_layer(feature_layers: tuple[int, ...],
-                          explicit: str | int | None) -> int:
+                          explicit: str | int | None,
+                          backbone: str) -> int:
+    """For ResNet, prefer layer 2 (highest spatial res among 1-3).
+    For DINOv2, all layers share the same spatial res, so pick the
+    smallest requested block (least costly tie-breaker)."""
     if explicit is None or (isinstance(explicit, str) and explicit == "auto"):
-        if 2 in feature_layers:
+        if backbone in RESNET_BACKBONES and 2 in feature_layers:
             return 2
         return min(feature_layers)
     val = int(explicit)
@@ -521,14 +557,13 @@ def resolve_target_layer(feature_layers: tuple[int, ...],
         raise ValueError(
             f"--target-layer {val} not in --feature-layers "
             f"{list(feature_layers)}; pass one of {list(feature_layers)} or "
-            f"'auto'."
-        )
+            f"'auto'.")
     return val
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PatchCore — multi-layer + TTA-aware + OOM-safe (fit() identical to v3
-# except for the new coreset_algo / coreset_batch knobs).
+# PatchCore — unchanged from v4 in behaviour. Only `_extract` calls
+# `self.extractor` which now dispatches by backbone kind.
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class PatchCoreConfig:
@@ -538,8 +573,8 @@ class PatchCoreConfig:
     input_size: int = 224
     coreset_frac: float = 0.10
     coreset_fp16: bool = False
-    coreset_algo: str = "minibatch"        # "exact" | "minibatch"
-    coreset_batch: int = 64                # mini-batch size for minibatch algo
+    coreset_algo: str = "minibatch"
+    coreset_batch: int = 64
     patch_size: int = 3
     knn_k: int = 9
     batch_size: int = 32
@@ -562,8 +597,7 @@ class PatchCore:
         self.target_layer = cfg.target_layer
         assert self.target_layer in cfg.feature_layers, (
             f"target_layer={self.target_layer} not in "
-            f"feature_layers={cfg.feature_layers}"
-        )
+            f"feature_layers={cfg.feature_layers}")
         self.memory_dtype = (torch.float16 if cfg.memory_dtype == "fp16"
                              else torch.float32)
         self.memory: torch.Tensor | None = None
@@ -603,6 +637,7 @@ class PatchCore:
         print(f"    [{now_hms()}] extracting train/good features "
               f"({len(train_good_records)} images, "
               f"input_size={self.cfg.input_size}, "
+              f"backbone={self.cfg.backbone}, "
               f"layers={list(self.cfg.feature_layers)}, "
               f"target_layer={self.target_layer})...")
         loader = make_loader(train_good_records,
@@ -631,9 +666,7 @@ class PatchCore:
             algo_desc = "exact (sync-free)"
         print(f"    [{now_hms()}] greedy coreset [{algo_desc}]: "
               f"selecting {n_select} of {all_feats.shape[0]} patches "
-              f"({self.cfg.coreset_frac:.1%})  "
-              f"[CPU features → GPU 32-d projection, "
-              f"project_chunk={self.cfg.project_chunk}]")
+              f"({self.cfg.coreset_frac:.1%})")
 
         idx_cpu = greedy_coreset(all_feats, n_select, self.device,
                                   seed=self.cfg.seed,
@@ -643,7 +676,6 @@ class PatchCore:
 
         selected_cpu = all_feats[idx_cpu]
         del all_feats
-
         selected_gpu = selected_cpu.to(self.device, non_blocking=True)
         del selected_cpu
         memory = selected_gpu.float()
@@ -676,7 +708,6 @@ class PatchCore:
         score_chunk = self.cfg.score_chunk
         memory_chunk = self.cfg.memory_chunk
         M_total = self.memory.shape[0]
-
         dist_min = torch.empty(N_q, device=self.device, dtype=torch.float32)
         for s in range(0, N_q, score_chunk):
             e = min(N_q, s + score_chunk)
@@ -693,7 +724,6 @@ class PatchCore:
             dist_min[s:e] = (1.0 - max_sim.float())
             del q, max_sim
         del flat, pf
-
         score_lr = dist_min.reshape(B, H, W)
         score = F.interpolate(score_lr.unsqueeze(1),
                               size=(self.cfg.input_size, self.cfg.input_size),
@@ -708,7 +738,6 @@ class PatchCore:
             return self._score_one_pass(x)
         accumulator = None
         n = 0
-
         def _add(scores: torch.Tensor):
             nonlocal accumulator, n
             if accumulator is None:
@@ -716,7 +745,6 @@ class PatchCore:
             else:
                 accumulator += scores
             n += 1
-
         _add(self._score_one_pass(x))
         if tta in ("hflip", "hvflip", "d4"):
             s = self._score_one_pass(torch.flip(x, dims=[-1]))
@@ -745,7 +773,7 @@ class PatchCore:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pixel-level Average Precision (unchanged)
+# Pixel-level Average Precision
 # ─────────────────────────────────────────────────────────────────────────────
 def pixel_average_precision(score: np.ndarray, gt: np.ndarray) -> float:
     s = score.astype(np.float32).ravel()
@@ -877,13 +905,17 @@ def make_run_id(cfg: RunConfig) -> str:
         "memory_chunk": cfg.memory_chunk,
         "project_chunk": cfg.project_chunk,
         "seed": cfg.seed,
-        "v": 4,
+        "v": 5,
     }, sort_keys=True).encode("utf-8")
     digest = hashlib.sha1(fp).hexdigest()[:6]
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    bb = {"wide_resnet50_2": "wrn50", "resnet50": "rn50",
-          "resnet18": "rn18"}[cfg.backbone]
-    L = "".join(str(l) for l in cfg.feature_layers)
+    bb = BACKBONE_SHORT[cfg.backbone]
+    # Use "_" separator for DINOv2 (block indices can be 2-digit); keep
+    # the compact concatenated form for ResNet to preserve old run_ids.
+    if cfg.backbone in RESNET_BACKBONES:
+        L = "".join(str(l) for l in cfg.feature_layers)
+    else:
+        L = "_".join(str(l) for l in cfg.feature_layers)
     bits = (f"{stamp}_{bb}_L{L}_T{cfg.target_layer}_"
             f"in{cfg.input_size}_cs{int(cfg.coreset_frac*100):02d}")
     if cfg.coreset_algo == "minibatch":
@@ -1086,63 +1118,67 @@ def main():
     ap.add_argument("--data-root",  type=Path, default=DEFAULT_DATA_ROOT)
     ap.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
     ap.add_argument("--backbone", default="wide_resnet50_2",
-                    choices=["wide_resnet50_2", "resnet50", "resnet18"])
+                    choices=ALL_BACKBONES,
+                    help="Backbone. ResNets use ImageNet weights; DINOv2 "
+                         "backbones are loaded via torch.hub from "
+                         "facebookresearch/dinov2 (cache at $TORCH_HOME/hub).")
     ap.add_argument("--feature-layers", type=int, nargs="+", default=[2, 3],
-                    help="ResNet stages to fuse (any subset of 1 2 3 4)")
+                    help="ResNet: stages 1..4 to fuse. DINOv2: transformer "
+                         "block indices 0..n_blocks-1 (ViT-S/14 has 12, "
+                         "ViT-L/14 has 24).")
     ap.add_argument("--target-layer", default="auto",
-                    help="Spatial grid: auto|1|2|3|4. 'auto' picks layer 2 "
-                         "if in feature-layers else smallest-numbered.")
+                    help="Spatial-grid anchor: auto|<int>. For ResNet 'auto' "
+                         "picks layer 2; for DINOv2 'auto' picks the smallest "
+                         "block index (all blocks share the same grid).")
     ap.add_argument("--input-size", type=int, default=224,
-                    choices=[224, 256, 320, 384, 448, 512])
+                    help="Input H=W. ResNet: 224/256/320/384/.../512 — any "
+                         "value. DINOv2: must be a multiple of 14 "
+                         "(common: 224, 392, 448, 518, 588, 700).")
     ap.add_argument("--coreset-frac", type=float, default=0.10)
-    ap.add_argument("--coreset-fp16", action="store_true",
-                    help="Cast CPU features to fp16 (CPU RAM only). Halves "
-                         "CPU RAM during selection. Selection is "
-                         "mathematically identical up to fp16 noise.")
+    ap.add_argument("--coreset-fp16", action="store_true")
     ap.add_argument("--coreset-algo", default="minibatch",
-                    choices=["exact", "minibatch"],
-                    help="v4: 'minibatch' (default, ~50-100x faster than v3, "
-                         "selects coreset-batch points per round) or 'exact' "
-                         "(sync-free greedy, same selection as v3, ~5-10x "
-                         "faster than v3).")
-    ap.add_argument("--coreset-batch", type=int, default=64,
-                    help="v4: points per round for the minibatch algo. "
-                         "64 is a strong default. Higher = faster but "
-                         "more approximation; 256 is a reasonable ceiling.")
+                    choices=["exact", "minibatch"])
+    ap.add_argument("--coreset-batch", type=int, default=64)
     ap.add_argument("--batch-size", type=int, default=32,
-                    help="batch size for feature extraction during fit()")
-    ap.add_argument("--score-batch-size", type=int, default=16,
-                    help="batch size for inference (validation + test).")
-    ap.add_argument("--score-chunk", type=int, default=4096,
-                    help="query-axis chunk size during NN scoring.")
-    ap.add_argument("--memory-chunk", type=int, default=32768,
-                    help="memory-bank-axis chunk during scoring.")
+                    help="Feature-extraction batch size.")
+    ap.add_argument("--score-batch-size", type=int, default=16)
+    ap.add_argument("--score-chunk", type=int, default=4096)
+    ap.add_argument("--memory-chunk", type=int, default=32768)
     ap.add_argument("--memory-dtype", default="fp16",
-                    choices=["fp16", "fp32"],
-                    help="dtype of the stored memory bank and sim matmul.")
-    ap.add_argument("--project-chunk", type=int, default=65536,
-                    help="CPU→GPU chunk size during coreset projection.")
+                    choices=["fp16", "fp32"])
+    ap.add_argument("--project-chunk", type=int, default=65536)
     ap.add_argument("--num-workers", type=int, default=2)
     ap.add_argument("--smooth-sigma", type=float, default=1.5)
-    ap.add_argument("--knn-k", type=int, default=9,
-                    help="kept for API compat; only 1-NN is actually used.")
+    ap.add_argument("--knn-k", type=int, default=9)
     ap.add_argument("--tta", default="none",
                     choices=["none", "hflip", "vflip", "hvflip", "d4"])
-    ap.add_argument("--aggressive-cleanup", action="store_true",
-                    help="call torch.cuda.empty_cache() between inference "
-                         "batches.")
+    ap.add_argument("--aggressive-cleanup", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--only-classes", nargs="*", default=[])
     ap.add_argument("--skip-eval", action="store_true")
     ap.add_argument("--skip-submission", action="store_true")
     ap.add_argument("--no-save-banks", action="store_true")
     ap.add_argument("--no-zip", action="store_true")
-    ap.add_argument("--run-tag", default="",
-                    help="human-readable tag appended to the run_id")
+    ap.add_argument("--run-tag", default="")
     args = ap.parse_args()
 
     feature_layers = tuple(sorted(set(args.feature_layers)))
-    target_layer = resolve_target_layer(feature_layers, args.target_layer)
+    target_layer = resolve_target_layer(feature_layers, args.target_layer,
+                                          args.backbone)
+
+    # ── Backbone-specific input validation
+    if args.backbone in DINOV2_BACKBONES:
+        if args.input_size % 14 != 0:
+            raise SystemExit(
+                f"[FATAL] DINOv2 requires --input-size divisible by 14; "
+                f"got {args.input_size}. Try 392 (28x28 tokens) or 518 "
+                f"(37x37, DINOv2 native resolution).")
+        nb = DINOV2_NBLOCKS[args.backbone]
+        bad = [l for l in feature_layers if not (0 <= l < nb)]
+        if bad:
+            raise SystemExit(
+                f"[FATAL] DINOv2 block indices out of range [0, {nb - 1}]: "
+                f"{bad}. For ViT-S/14 try '--feature-layers 3 6 9 11'.")
 
     cfg = RunConfig(
         data_root=args.data_root, report_dir=args.report_dir,
@@ -1176,15 +1212,17 @@ def main():
     run_dir.mkdir(parents=True, exist_ok=True)
 
     with tee_to(run_dir / "run_log.txt"):
-        hr(f"PATCHCORE v4 (fast coreset) — RUN {run_id}", "█")
+        hr(f"PATCHCORE v5 (DINOv2-capable) — RUN {run_id}", "█")
         print(f"  data_root        : {cfg.data_root}")
         print(f"  report_dir       : {cfg.report_dir}")
         print(f"  run_dir          : {run_dir}")
-        print(f"  backbone         : {cfg.backbone}")
+        print(f"  backbone         : {cfg.backbone}  "
+              f"(kind={'DINOv2' if cfg.backbone in DINOV2_BACKBONES else 'ResNet'})")
         print(f"  feature_layers   : {list(cfg.feature_layers)}")
-        print(f"  target_layer     : {cfg.target_layer}"
-              f"  (auto-rule: 2 if in layers else min)")
-        print(f"  input_size       : {cfg.input_size}")
+        print(f"  target_layer     : {cfg.target_layer}")
+        print(f"  input_size       : {cfg.input_size}"
+              + (f"  (tokens: {cfg.input_size // 14}x{cfg.input_size // 14})"
+                 if cfg.backbone in DINOV2_BACKBONES else ""))
         print(f"  coreset_frac     : {cfg.coreset_frac:.1%}   "
               f"coreset_fp16={cfg.coreset_fp16}   knn_k={cfg.knn_k}")
         print(f"  coreset_algo     : {cfg.coreset_algo}"
@@ -1198,12 +1236,13 @@ def main():
         print(f"  project_chunk    : {cfg.project_chunk}")
         print(f"  smooth_sigma     : {cfg.smooth_sigma}")
         print(f"  tta              : {cfg.tta}")
+        print(f"  save_banks       : {cfg.save_memory_banks}")
         print(f"  aggressive_clean : {cfg.aggressive_cleanup}")
         print(f"  device           : {'cuda' if torch.cuda.is_available() else 'cpu'}")
         if torch.cuda.is_available():
             print(f"                    {torch.cuda.get_device_name(0)}, "
                   f"{torch.cuda.get_device_properties(0).total_memory/1e9:.1f} GB")
-        ch_per_layer = sum(RESNET_CHANNELS[cfg.backbone][l]
+        ch_per_layer = sum(BACKBONE_CHANNELS[cfg.backbone][l]
                             for l in cfg.feature_layers)
         print(f"  expected fused feature dim : {ch_per_layer}")
 
