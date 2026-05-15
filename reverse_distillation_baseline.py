@@ -5,56 +5,22 @@ Embedding" (Deng & Li, CVPR 2022) adapted to Spacepresso with the
 same logging / submission / ablation_master / local_eval conventions
 as patchcore_baseline_v2.py and cutpaste_baseline.py.
 
-Two teacher backbones are supported, with a separate OCBE/Decoder pair
-each (they share everything else — training loop, scoring, TTA, RLE):
+# Architecture (WRN50-2 teacher; matches exp5's backbone for fusion sanity)
 
-# CNN teacher  (--backbone wide_resnet50_2  or  resnet50)
-
-  Feature pyramid (hierarchical, fixed at layers [1, 2, 3]):
+  - Teacher: frozen WideResNet-50-2 (ImageNet) producing feature maps at
         layer1 [B, 256,  H/4,  W/4]
         layer2 [B, 512,  H/8,  W/8]
         layer3 [B, 1024, H/16, W/16]
 
-  CNN_OCBE:
+  - OCBE (One-Class Bottleneck Embedding):
         layer1 --(stride-2 3x3 conv)x2--> [B, 1024, H/16, W/16]
         layer2 --(stride-2 3x3 conv)--->  [B, 1024, H/16, W/16]
         concat with layer3                [B, 3072, H/16, W/16]
         --(3 Bottleneck blocks, first stride 2)--> [B, 2048, H/32, W/32]
 
-  CNN_Decoder: 3 stages of inverted Bottleneck blocks (ConvTranspose2d
-  for upsampling), output channel/spatial shapes mirror the teacher's
-  layer3/2/1 exactly so per-pixel cosine similarity is well defined.
-
-# ViT teacher  (--backbone dinov2_vits14 / dinov2_vitb14 / dinov2_vitl14)
-
-  DINOv2 has NO spatial hierarchy — every transformer block outputs the
-  same spatial grid S × S = (input_size / 14)^2 with the same embed_dim.
-  So "multi-scale" comes from sampling K different *depths*, not
-  resolutions. Default block indices [3, 6, 9, 11] match exp7 (PatchCore
-  + DINOv2), so RD with the same blocks gives a directly comparable
-  fusion partner with a fundamentally different scoring paradigm.
-
-  Per-block teacher map: [B, D, S, S]   where D ∈ {384, 768, 1024} for
-                                              S/B/L respectively.
-
-  ViT_OCBE:
-        concat K maps along channels:    [B, K*D,  S,   S]
-        proj 1x1 + BN + ReLU:            [B, 1024, S,   S]
-        Bottleneck block stride 2:       [B, 2048, S/2, S/2]
-        2x Bottleneck refine blocks:     [B, 2048, S/2, S/2]   (= the bn)
-
-  ViT_Decoder:
-        2x Bottleneck refine blocks:     [B, 2048, S/2, S/2]
-        1x1 reduce + BN + ReLU:          [B, 1024, S/2, S/2]
-        bilinear upsample to S:          [B, 1024, S,   S]
-        2x Bottleneck refine blocks:     [B, 1024, S,   S]
-        final 1x1 conv + BN  (no ReLU,   [B, K*D,  S,   S]
-            since ViT features can be negative)
-        chunk along channels into K maps each [B, D, S, S].
-
-  S is allowed to be odd (e.g. S=37 at input 518): stride-2 3x3 convs
-  with padding 1 map odd S to (S+1)//2, and bilinear F.interpolate
-  handles arbitrary target sizes on the way back up.
+  - Decoder: 3 stages of inverted Bottleneck blocks (ConvTranspose2d for
+    upsampling), output channel/spatial shapes mirror the teacher's
+    layer3/2/1 exactly so a per-pixel cosine similarity is well defined.
 
   - Train loss (only on train/good):
         L = sum_k mean_over_BHW( 1 - cos_sim(t_k, s_k, dim=channels) )
@@ -140,60 +106,12 @@ PROJECT_ROOT = Path("/work/u10813429/anomaly-detection")
 DEFAULT_DATA_ROOT  = PROJECT_ROOT / "data"
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "baseline_out"
 
-# Teacher feature channels at layers 1, 2, 3 for WRN50-2 / ResNet50. Both
-# share the same Bottleneck block expansion (4) and therefore the same
-# output widths, so the CNN OCBE+Decoder pair handles both.
-CNN_TEACHER_CHANNELS = {1: 256, 2: 512, 3: 1024}
-CNN_BACKBONES = ("wide_resnet50_2", "resnet50")
+# Teacher feature channels at layers 1, 2, 3 for WRN50-2. Hard-coded here
+# because RD's OCBE and Decoder are architecturally tied to these.
+TEACHER_CHANNELS = {1: 256, 2: 512, 3: 1024}
 
-# DINOv2 ViT teachers. embed_dim and number of transformer blocks differ
-# per variant; the ViT OCBE+Decoder pair is parameterised by these.
-DINOV2_DIMS = {
-    "dinov2_vits14": 384,
-    "dinov2_vitb14": 768,
-    "dinov2_vitl14": 1024,
-}
-DINOV2_NBLOCKS = {
-    "dinov2_vits14": 12,
-    "dinov2_vitb14": 12,
-    "dinov2_vitl14": 24,
-}
-VIT_BACKBONES = tuple(DINOV2_DIMS.keys())
-ALL_BACKBONES = CNN_BACKBONES + VIT_BACKBONES
-
-BACKBONE_SHORT = {
-    "wide_resnet50_2": "wrn50",
-    "resnet50":        "rn50",
-    "dinov2_vits14":   "dnv2s14",
-    "dinov2_vitb14":   "dnv2b14",
-    "dinov2_vitl14":   "dnv2l14",
-}
-
-# Bottleneck "width per planes" multiplier. WRN50-2 uses 128, every other
-# supported backbone uses the standard 64. This only affects the *student*
-# blocks (OCBE/Decoder): we let the CNN student inherit WRN50's width
-# (it has to reconstruct WRN50 features, so wider is appropriate), and
-# keep the ViT student at the standard width (lighter, ~30 M params total).
+# Bottleneck "width per planes" multiplier for WRN50-2.
 WRN_BASE_WIDTH = 128
-STD_BASE_WIDTH = 64
-
-
-def teacher_kind(backbone: str) -> str:
-    if backbone in CNN_BACKBONES:  return "cnn"
-    if backbone in VIT_BACKBONES:  return "vit"
-    raise ValueError(f"unsupported RD backbone: {backbone!r} "
-                     f"(allowed: {ALL_BACKBONES})")
-
-
-def default_feature_layers(backbone: str) -> tuple[int, ...]:
-    """Sensible per-backbone defaults if --feature-layers is unset."""
-    if backbone in CNN_BACKBONES:
-        return (1, 2, 3)
-    if backbone == "dinov2_vits14" or backbone == "dinov2_vitb14":
-        return (3, 6, 9, 11)         # matches exp7's PatchCore+DINOv2 config
-    if backbone == "dinov2_vitl14":
-        return (5, 11, 17, 23)       # spaced through 24 blocks
-    raise ValueError(f"no default feature_layers for backbone {backbone!r}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -362,12 +280,10 @@ class DeBottleneck(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CNN_OCBE — One-Class Bottleneck Embedding for WRN50-2 / ResNet50 teacher
+# OCBE — One-Class Bottleneck Embedding
 # ─────────────────────────────────────────────────────────────────────────────
-class CNN_OCBE(nn.Module):
-    """Fuses (layer1, layer2, layer3) of a CNN teacher into a single
-    H/32 × 2048-ch tensor. Designed for the WRN50-2 / ResNet50 layer
-    channel counts (256 / 512 / 1024).
+class OCBE(nn.Module):
+    """Fuses (layer1, layer2, layer3) into a single H/32 × 2048-ch tensor.
 
     Branches:
         layer1 [256, H/4]   -> (3x3 s2) -> [512,  H/8]
@@ -379,7 +295,7 @@ class CNN_OCBE(nn.Module):
     (first block has stride 2 + 1x1 channel projection downsample) ->
     [2048, H/32].
     """
-    def __init__(self, base_width: int = WRN_BASE_WIDTH):
+    def __init__(self, base_width=WRN_BASE_WIDTH):
         super().__init__()
         # Branch a: layer1 → 1024 ch @ H/16 (two stride-2 3x3 convs).
         self.l1_conv1 = conv3x3(256, 512, stride=2)
@@ -411,9 +327,9 @@ class CNN_OCBE(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CNN_Decoder — inverted ResNet that mirrors layers 1, 2, 3 of the teacher
+# Decoder — inverted ResNet that mirrors layers 1, 2, 3 of the teacher
 # ─────────────────────────────────────────────────────────────────────────────
-class CNN_Decoder(nn.Module):
+class Decoder(nn.Module):
     """Input: [B, 2048, H/32, W/32]; outputs three feature maps with the
     same channel/spatial shapes as teacher layer3/2/1 respectively.
 
@@ -453,142 +369,17 @@ class CNN_Decoder(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ViT_OCBE — One-Class Bottleneck Embedding for DINOv2 teachers
-# ─────────────────────────────────────────────────────────────────────────────
-class ViT_OCBE(nn.Module):
-    """Fuses K transformer-block features [B, D, S, S] into a single
-    H/(14*2) × 2048-ch bottleneck. Parameterised by n_feats (= K) and
-    embed_dim (= D, e.g. 384 for ViT-S/14).
-
-    Pipeline:
-        cat K maps   [B, K*D,  S,   S]
-        proj 1x1     [B, 1024, S,   S]   (1x1 conv + BN + ReLU)
-        stride-2 Bottleneck   [B, 2048, S/2, S/2]
-        2x Bottleneck refine  [B, 2048, S/2, S/2]
-    """
-    def __init__(self, n_feats: int, embed_dim: int,
-                 base_width: int = STD_BASE_WIDTH):
-        super().__init__()
-        in_ch = n_feats * embed_dim
-        # Project the concat down to 1024 channels at full spatial res.
-        self.proj = nn.Sequential(
-            nn.Conv2d(in_ch, 1024, 1, bias=False),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(inplace=True),
-        )
-        # Spatial bottleneck: 1024 -> 2048 channels, S -> S/2.
-        downsample = nn.Sequential(
-            conv1x1(1024, 2048, stride=2),
-            nn.BatchNorm2d(2048),
-        )
-        self.down    = Bottleneck(1024, 512, stride=2,
-                                    downsample=downsample,
-                                    base_width=base_width)
-        self.refine1 = Bottleneck(2048, 512, stride=1, base_width=base_width)
-        self.refine2 = Bottleneck(2048, 512, stride=1, base_width=base_width)
-
-    def forward(self, feats: dict[int, torch.Tensor]) -> torch.Tensor:
-        # Preserve the dict order — chunks are reassembled in this order
-        # by ViT_Decoder.forward.
-        x = torch.cat(list(feats.values()), dim=1)
-        x = self.proj(x)
-        x = self.down(x)
-        x = self.refine1(x)
-        x = self.refine2(x)
-        return x                            # [B, 2048, S/2, S/2]
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ViT_Decoder — mirrors ViT_OCBE back to K maps at the teacher's grid
-# ─────────────────────────────────────────────────────────────────────────────
-class ViT_Decoder(nn.Module):
-    """Input: [B, 2048, S/2, S/2]. Output: K maps each [B, D, S, S],
-    where S = target spatial size passed at forward time (= input/14).
-
-    No ConvTranspose2d — bilinear F.interpolate handles odd S (e.g.
-    S=37 at input 518). Final 1x1 conv has BN but no ReLU because
-    DINOv2 features (post-LayerNorm) can be negative.
-    """
-    def __init__(self, n_feats: int, embed_dim: int,
-                 base_width: int = STD_BASE_WIDTH):
-        super().__init__()
-        self.n_feats = n_feats
-        self.embed_dim = embed_dim
-        # Refine at S/2 before upsampling.
-        self.refine_pre1 = Bottleneck(2048, 512, stride=1, base_width=base_width)
-        self.refine_pre2 = Bottleneck(2048, 512, stride=1, base_width=base_width)
-        # Channel reduce 2048 -> 1024 prior to spatial upsample.
-        self.reduce = nn.Sequential(
-            nn.Conv2d(2048, 1024, 1, bias=False),
-            nn.BatchNorm2d(1024),
-            nn.ReLU(inplace=True),
-        )
-        # Refine at full S after upsampling.
-        self.refine_post1 = Bottleneck(1024, 256, stride=1, base_width=base_width)
-        self.refine_post2 = Bottleneck(1024, 256, stride=1, base_width=base_width)
-        # Final projection to K*D channels (BN, no ReLU).
-        self.final = nn.Sequential(
-            nn.Conv2d(1024, n_feats * embed_dim, 1, bias=False),
-            nn.BatchNorm2d(n_feats * embed_dim),
-        )
-
-    def forward(self, x: torch.Tensor, target_size: int) -> list[torch.Tensor]:
-        x = self.refine_pre2(self.refine_pre1(x))   # [B, 2048, S/2, S/2]
-        x = self.reduce(x)                          # [B, 1024, S/2, S/2]
-        x = F.interpolate(x, size=target_size,
-                          mode="bilinear", align_corners=False)
-        x = self.refine_post2(self.refine_post1(x)) # [B, 1024, S, S]
-        x = self.final(x)                           # [B, K*D, S, S]
-        return list(torch.chunk(x, self.n_feats, dim=1))
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# RD student wrapper — pairs OCBE+Decoder for clean optimizer/state handling.
-# Dispatches between the CNN and ViT variants based on the teacher's kind.
+# RD wrapper — pairs OCBE+Decoder for clean optimizer/state handling
 # ─────────────────────────────────────────────────────────────────────────────
 class RDStudent(nn.Module):
-    def __init__(self, backbone: str, feature_layers: tuple[int, ...]):
+    def __init__(self):
         super().__init__()
-        self.backbone = backbone
-        self.kind = teacher_kind(backbone)
-        self.feature_layers = tuple(feature_layers)
-        if self.kind == "cnn":
-            # The CNN OCBE/Decoder are hard-wired to layers (1, 2, 3) with
-            # WRN50-2/ResNet50 channel counts. Enforce that here.
-            if self.feature_layers != (1, 2, 3):
-                raise ValueError(
-                    f"CNN RD requires --feature-layers 1 2 3 (got "
-                    f"{list(self.feature_layers)}). The CNN OCBE/Decoder "
-                    f"are architecturally tied to those three stages.")
-            self.ocbe    = CNN_OCBE(base_width=WRN_BASE_WIDTH)
-            self.decoder = CNN_Decoder(base_width=WRN_BASE_WIDTH)
-            self.embed_dim = None
-        else:  # vit
-            n_blocks = DINOV2_NBLOCKS[backbone]
-            bad = [l for l in self.feature_layers if not (0 <= l < n_blocks)]
-            if bad:
-                raise ValueError(
-                    f"DINOv2 block indices out of range [0, {n_blocks - 1}]: "
-                    f"{bad}")
-            self.embed_dim = DINOV2_DIMS[backbone]
-            self.ocbe    = ViT_OCBE(n_feats=len(self.feature_layers),
-                                      embed_dim=self.embed_dim,
-                                      base_width=STD_BASE_WIDTH)
-            self.decoder = ViT_Decoder(n_feats=len(self.feature_layers),
-                                         embed_dim=self.embed_dim,
-                                         base_width=STD_BASE_WIDTH)
+        self.ocbe    = OCBE()
+        self.decoder = Decoder()
 
     def forward(self, teacher_feats: dict[int, torch.Tensor]
                  ) -> dict[int, torch.Tensor]:
-        if self.kind == "cnn":
-            return self.decoder(self.ocbe(teacher_feats))
-        # ViT: spatial size of teacher features = input/14; pass it
-        # to the decoder so F.interpolate hits the exact S, even when odd.
-        bn = self.ocbe(teacher_feats)
-        target_size = next(iter(teacher_feats.values())).shape[-1]
-        chunks = self.decoder(bn, target_size=target_size)
-        # Reassemble {block_idx: chunk} in the same order as teacher_feats.
-        return {k: c for k, c in zip(teacher_feats.keys(), chunks)}
+        return self.decoder(self.ocbe(teacher_feats))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -691,7 +482,7 @@ def train_rd(teacher: FeatureExtractor,
             with torch.amp.autocast("cuda", enabled=use_amp):
                 # Teacher under no-grad regardless of AMP — its weights
                 # don't move, and inference_mode is set in FeatureExtractor.
-                t_feats = teacher(x, layers=cfg.feature_layers)
+                t_feats = teacher(x, layers=(1, 2, 3))
                 # Detach defensively — FeatureExtractor uses inference_mode
                 # so this is essentially a no-op, but it makes intent clear.
                 t_feats = {k: v.detach() for k, v in t_feats.items()}
@@ -720,7 +511,7 @@ def _score_one_pass(teacher: FeatureExtractor, student: RDStudent,
                      device: torch.device) -> torch.Tensor:
     use_amp = (device.type == "cuda" and cfg.amp)
     with torch.amp.autocast("cuda", enabled=use_amp):
-        t_feats = teacher(x, layers=cfg.feature_layers)
+        t_feats = teacher(x, layers=(1, 2, 3))
         s_feats = student(t_feats)
     amap = rd_anomaly_map(t_feats, s_feats,
                           input_size=cfg.input_size,
@@ -769,9 +560,8 @@ def score_batch(teacher: FeatureExtractor, student: RDStudent,
 class RunConfig:
     data_root: Path
     report_dir: Path
-    # Teacher
+    # Architecture (fixed: WRN50-2 teacher + OCBE + decoder)
     backbone: str = "wide_resnet50_2"
-    feature_layers: tuple[int, ...] = (1, 2, 3)
     input_size: int = 256
     amap_mode: str = "mul"           # mul | sum
     # Training
@@ -802,7 +592,6 @@ def make_run_id(cfg: RunConfig) -> str:
     fp = json.dumps({
         "method": "reverse_distillation",
         "backbone": cfg.backbone,
-        "feature_layers": list(cfg.feature_layers),
         "input_size": cfg.input_size,
         "amap_mode": cfg.amap_mode,
         "epochs": cfg.epochs,
@@ -815,20 +604,13 @@ def make_run_id(cfg: RunConfig) -> str:
         "smooth_sigma": cfg.smooth_sigma,
         "tta": cfg.tta,
         "seed": cfg.seed,
-        "v": 2,
+        "v": 1,
     }, sort_keys=True).encode("utf-8")
     digest = hashlib.sha1(fp).hexdigest()[:6]
     stamp = time.strftime("%Y%m%d-%H%M%S")
     budget = (f"it{cfg.total_iters}" if (cfg.total_iters and cfg.total_iters > 0)
               else f"e{cfg.epochs}")
-    bb = BACKBONE_SHORT.get(cfg.backbone, cfg.backbone)
-    # CNN: layer indices are 1-digit and contiguous, so a packed form is
-    # readable ("L123"). ViT: block indices may be 2-digit, use "_"-sep.
-    if cfg.backbone in CNN_BACKBONES:
-        L = "".join(str(l) for l in cfg.feature_layers)
-    else:
-        L = "_".join(str(l) for l in cfg.feature_layers)
-    bits = (f"{stamp}_rd-{bb}_L{L}_in{cfg.input_size}_{budget}"
+    bits = (f"{stamp}_rd_wrn50_in{cfg.input_size}_{budget}"
             f"_bs{cfg.batch_size}_lr{cfg.lr:.0e}_{cfg.amap_mode}")
     if cfg.tta != "none":
         bits += f"_tta-{cfg.tta}"
@@ -860,9 +642,8 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
                 "eval_rows": [], "test_results": [], "elapsed_min": 0.0}
 
     # Build a fresh student per class — one-class embeddings are
-    # class-specific. The teacher is shared (frozen) across classes.
-    student = RDStudent(backbone=cfg.backbone,
-                         feature_layers=cfg.feature_layers).to(device)
+    # class-specific. The teacher is shared (frozen).
+    student = RDStudent().to(device)
 
     train_rd(teacher, student, train_good, cfg, device)
     if cfg.save_checkpoints:
@@ -980,28 +761,13 @@ def main():
         description=__doc__)
     ap.add_argument("--data-root",  type=Path, default=DEFAULT_DATA_ROOT)
     ap.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
-    ap.add_argument("--backbone", default="wide_resnet50_2",
-                    choices=ALL_BACKBONES,
-                    help="Teacher backbone. CNN options use the hierarchical "
-                         "OCBE+Decoder (layers fixed at [1,2,3]); DINOv2 "
-                         "options use a single-resolution OCBE+Decoder over "
-                         "the chosen transformer blocks.")
-    ap.add_argument("--feature-layers", type=int, nargs="+", default=None,
-                    help="CNN: must be `1 2 3` (architecturally fixed). "
-                         "DINOv2: transformer block indices 0..n_blocks-1. "
-                         "If omitted, defaults to [1,2,3] for CNN, "
-                         "[3,6,9,11] for DINOv2-S/B (12 blocks), "
-                         "[5,11,17,23] for DINOv2-L (24 blocks).")
     ap.add_argument("--input-size", type=int, default=256,
-                    help="CNN: must be divisible by 32 (OCBE downsamples "
-                         "by 32). Recommended: 256, 384. "
-                         "DINOv2: must be divisible by 14 (patch size). "
-                         "Recommended: 392 (28x28 tokens), 518 (37x37, "
-                         "DINOv2 native resolution).")
+                    help="Must be divisible by 32 (OCBE downsamples by 32). "
+                         "Recommended: 256 (paper), 384 (matches exp5).")
     ap.add_argument("--amap-mode", default="mul", choices=["mul", "sum"],
                     help="How to combine per-scale anomaly maps. 'mul' is "
                          "the RD4AD paper default; 'sum' tends to be more "
-                         "stable when one scale saturates close to 0.")
+                         "stable when one scale dominates.")
     # Training
     ap.add_argument("--epochs", type=int, default=200)
     ap.add_argument("--total-iters", type=int, default=None,
@@ -1030,41 +796,13 @@ def main():
     ap.add_argument("--run-tag", default="")
     args = ap.parse_args()
 
-    # Resolve --feature-layers default based on backbone.
-    if args.feature_layers is None:
-        args.feature_layers = list(default_feature_layers(args.backbone))
-    feature_layers = tuple(sorted(set(args.feature_layers)))
-
-    # Per-backbone input validation.
-    kind = teacher_kind(args.backbone)
-    if kind == "cnn":
-        if args.input_size % 32 != 0:
-            raise SystemExit(
-                f"[FATAL] CNN RD requires --input-size divisible by 32 "
-                f"(OCBE downsamples by 32). Got {args.input_size}; try "
-                f"256, 320, 384.")
-        if feature_layers != (1, 2, 3):
-            raise SystemExit(
-                f"[FATAL] CNN RD requires --feature-layers 1 2 3 (got "
-                f"{list(feature_layers)}). The CNN OCBE/Decoder are "
-                f"architecturally tied to those stages.")
-    else:  # vit
-        if args.input_size % 14 != 0:
-            raise SystemExit(
-                f"[FATAL] DINOv2 requires --input-size divisible by 14; "
-                f"got {args.input_size}. Try 392 (28x28 tokens) or 518 "
-                f"(37x37, DINOv2 native resolution).")
-        nb = DINOV2_NBLOCKS[args.backbone]
-        bad = [l for l in feature_layers if not (0 <= l < nb)]
-        if bad:
-            raise SystemExit(
-                f"[FATAL] DINOv2 block indices out of range "
-                f"[0, {nb - 1}]: {bad}")
+    if args.input_size % 32 != 0:
+        raise SystemExit(
+            f"[FATAL] --input-size must be divisible by 32 (OCBE "
+            f"downsamples by 32). Got {args.input_size}; try 256, 320, 384.")
 
     cfg = RunConfig(
         data_root=args.data_root, report_dir=args.report_dir,
-        backbone=args.backbone,
-        feature_layers=feature_layers,
         input_size=args.input_size, amap_mode=args.amap_mode,
         epochs=args.epochs, total_iters=args.total_iters,
         batch_size=args.batch_size, lr=args.lr,
@@ -1093,12 +831,8 @@ def main():
         hr(f"REVERSE DISTILLATION — RUN {run_id}", "█")
         print(f"  data_root        : {cfg.data_root}")
         print(f"  run_dir          : {run_dir}")
-        print(f"  teacher backbone : {cfg.backbone}  "
-              f"(kind={teacher_kind(cfg.backbone)}, frozen)")
-        print(f"  feature_layers   : {list(cfg.feature_layers)}")
-        print(f"  input_size       : {cfg.input_size}"
-              + (f"  (tokens: {cfg.input_size // 14}x{cfg.input_size // 14})"
-                 if cfg.backbone in VIT_BACKBONES else ""))
+        print(f"  teacher backbone : {cfg.backbone}  (frozen WRN50-2)")
+        print(f"  input_size       : {cfg.input_size}")
         print(f"  amap_mode        : {cfg.amap_mode}")
         if cfg.total_iters is not None:
             print(f"  total_iters      : {cfg.total_iters}  "
@@ -1175,7 +909,7 @@ def main():
             "run_tag": cfg.run_tag,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "backbone": cfg.backbone,
-            "feature_layers": "+".join(str(l) for l in cfg.feature_layers),
+            "feature_layers": "1+2+3",
             "target_layer": "",
             "input_size": cfg.input_size,
             "smooth_sigma": cfg.smooth_sigma,
@@ -1190,9 +924,7 @@ def main():
             "runtime_min": f"{(time.time() - t_total) / 60:.1f}",
             "submission_path": str(run_dir / "submission.zip")
                                 if not cfg.skip_submission else "",
-            "notes": (f"reverse_distillation {cfg.backbone} "
-                      f"L={'+'.join(str(l) for l in cfg.feature_layers)} "
-                      f"amap={cfg.amap_mode} "
+            "notes": (f"reverse_distillation amap={cfg.amap_mode} "
                       f"{'it' + str(cfg.total_iters) if cfg.total_iters else 'e' + str(cfg.epochs)} "
                       f"bs{cfg.batch_size} lr{cfg.lr:.0e}"),
         }

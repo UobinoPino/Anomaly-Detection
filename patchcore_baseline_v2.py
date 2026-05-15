@@ -46,6 +46,16 @@ Pre-flight (run once on a node with internet, e.g. login node):
 
 This caches the ~88 MB checkpoint under ~/.cache/torch/hub/checkpoints
 so compute nodes can read it offline.
+
+# v5 + stacker hook (additive)
+
+This file also writes a `local_predictions.npz` per run for downstream
+stacker training (logreg_stacker.py / xgboost_stacker.py). The hook is
+non-invasive: a `LocalPredSaver` instance is threaded through
+`run_one_class`, populated alongside the existing pixel-AP computation,
+and dumped once at the end of `main()`. Behaviour of every existing
+output (submission.csv, local_eval.csv, ablation_master.csv) is
+unchanged.
 """
 from __future__ import annotations
 
@@ -76,10 +86,8 @@ from torchvision.models import (
     resnet50, ResNet50_Weights,
 )
 
-# Local-predictions saver: dumps per-pixel local-val score maps + GT
-# masks to <run_dir>/local_predictions.npz for the downstream stackers
-# (logreg / XGBoost). Costs ~1 MB per local-val image at 224x224 and
-# adds no GPU memory; the saver lives entirely on the host.
+# Stacker hook — must live in the same directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from local_preds_saver import LocalPredSaver
 
 
@@ -962,7 +970,10 @@ def append_to_ablation_master(master_csv: Path, row: dict) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 def run_one_class(cls: str, records_all: list[ImageRecord],
                    cfg: RunConfig, run_dir: Path,
-                   local_saver: LocalPredSaver | None = None) -> dict:
+                   local_saver: "LocalPredSaver | None" = None) -> dict:
+    """If `local_saver` is given, every local-val (score_map, gt_mask)
+    pair is appended to it so the stacker can train on the raw pixel
+    predictions later."""
     hr(f"CLASS {cls}", "─")
     t_start = time.time()
 
@@ -1032,13 +1043,16 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
             r = train_anom[r_idx]
             ap = pixel_average_precision(sm, gt_per_idx[r_idx])
             by_anom[r.anomaly_type or "?"].append(ap)
-            # Persist the per-pixel local-val prediction + GT mask so the
-            # downstream stackers can train without re-running this model.
+            # Stacker hook: record the raw per-pixel score map + GT mask
+            # for this (class, anomaly_type, view). The smoothed,
+            # full-input-resolution map is exactly what the stacker wants
+            # as input — same as what we'd compute at test time before
+            # the final submission resize.
             if local_saver is not None:
                 local_saver.add(
                     cls=cls,
                     anomaly_type=r.anomaly_type or "unknown",
-                    view_idx=r_idx,
+                    view_idx=int(r_idx),
                     score_map=sm,
                     gt_mask=gt_per_idx[r_idx],
                     image_path=r.path,
@@ -1178,9 +1192,8 @@ def main():
     ap.add_argument("--no-save-banks", action="store_true")
     ap.add_argument("--no-zip", action="store_true")
     ap.add_argument("--no-save-local-preds", action="store_true",
-                    help="Disable the local_predictions.npz dump. The npz "
-                         "is what the logreg/XGBoost stackers train on, so "
-                         "only pass this in skip-eval-only debugging runs.")
+                    help="Disable saving local_predictions.npz "
+                         "(default: save).")
     ap.add_argument("--run-tag", default="")
     args = ap.parse_args()
 
@@ -1283,11 +1296,11 @@ def main():
             classes = [c for c in classes if c in set(cfg.only_classes)]
         print(f"\n  running on {len(classes)} class(es): {', '.join(classes)}")
 
-        # Single saver instance shared across classes — produces one
-        # local_predictions.npz at the run root after all classes are done.
-        local_saver = (LocalPredSaver()
-                       if (not cfg.skip_eval and not args.no_save_local_preds)
-                       else None)
+        # Stacker hook: one saver across all classes; written once at the
+        # end of the run. Disabled if --skip-eval (no GT to save).
+        local_saver: LocalPredSaver | None = None
+        if not cfg.skip_eval and not args.no_save_local_preds:
+            local_saver = LocalPredSaver()
 
         all_test_results = []
         all_eval_rows: list[dict] = []
@@ -1301,8 +1314,8 @@ def main():
             class_aps[cls] = res["class_mean_ap"]
             class_elapsed[cls] = res["elapsed_min"]
 
-        # Dump the per-pixel local-val predictions for the stacker. The
-        # saver may be None on --skip-eval / --no-save-local-preds runs.
+        # Persist the accumulated local predictions ONCE (single npz
+        # for the whole run). The stacker reads this file directly.
         if local_saver is not None and len(local_saver) > 0:
             local_saver.save(run_dir / "local_predictions.npz")
 
