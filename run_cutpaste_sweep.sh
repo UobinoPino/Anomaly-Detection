@@ -16,64 +16,64 @@
 #
 #set -euo pipefail
 #
-#DATA=/work/u10813429/anomaly-detection/data
-#OUT=/work/u10813429/anomaly-detection/baseline_out
-#
-## ── EXPERIMENT 8a ───────────────────────────────────────────────────────────
-#echo "================================================================"
-#echo "EXPERIMENT 8a — CutPaste @ ResNet-18 (paper standard, v2 budget)"
-#echo "================================================================"
-#
-#uv run python cutpaste_baseline.py \
-#    --data-root  "$DATA" \
-#    --report-dir "$OUT" \
-#    --backbone resnet18 \
-#    --input-size 256 \
-#    --feature-layers 1 2 3 \
-#    --target-layer 2 \
-#    --total-iters 2500 \
-#    --batch-size 64 \
-#    --num-workers 8 \
-#    --lr 0.03 \
-#    --weight-decay 3e-5 \
-#    --projection-dim 100 \
-#    --padim-eps 0.01 \
-#    --score-batch-size 16 \
-#    --smooth-sigma 1.5 \
-#    --tta hvflip \
-#    --run-tag "exp8a-cutpaste-rn18-fast"
-#
-## ── EXPERIMENT 8b ───────────────────────────────────────────────────────────
-## ResNet-50 needs a smaller batch to keep activation memory in check on L4.
-## 32 → effective 96 (same as v1 RN18 setting). With AMP this fits comfortably.
-#echo "================================================================"
-#echo "EXPERIMENT 8b — CutPaste @ ResNet-50 (richer features, v2 budget)"
-#echo "================================================================"
-#
-#uv run python cutpaste_baseline.py \
-#    --data-root  "$DATA" \
-#    --report-dir "$OUT" \
-#    --backbone resnet50 \
-#    --input-size 256 \
-#    --feature-layers 1 2 3 \
-#    --target-layer 2 \
-#    --total-iters 2500 \
-#    --batch-size 32 \
-#    --num-workers 8 \
-#    --lr 0.03 \
-#    --weight-decay 3e-5 \
-#    --projection-dim 100 \
-#    --padim-eps 0.01 \
-#    --score-batch-size 12 \
-#    --smooth-sigma 1.5 \
-#    --tta hvflip \
-#    --run-tag "exp8b-cutpaste-rn50-fast"
-#
-#echo
-#echo "================================================================"
-#echo "DONE — check $OUT/ablation_master.csv for the two new rows."
-#echo "Pick the better of (8a, 8b) by AP_overall for fusion (step 9)."
-#echo "================================================================"
+DATA=/work/u10813429/anomaly-detection/data
+OUT=/work/u10813429/anomaly-detection/baseline_out
+
+# ── EXPERIMENT 8a ───────────────────────────────────────────────────────────
+echo "================================================================"
+echo "EXPERIMENT 8a — CutPaste @ ResNet-18 (paper standard, v2 budget)"
+echo "================================================================"
+
+uv run python cutpaste_baseline.py \
+    --data-root  "$DATA" \
+    --report-dir "$OUT" \
+    --backbone resnet18 \
+    --input-size 256 \
+    --feature-layers 1 2 3 \
+    --target-layer 2 \
+    --total-iters 2500 \
+    --batch-size 64 \
+    --num-workers 8 \
+    --lr 0.03 \
+    --weight-decay 3e-5 \
+    --projection-dim 100 \
+    --padim-eps 0.01 \
+    --score-batch-size 16 \
+    --smooth-sigma 1.5 \
+    --tta hvflip \
+    --run-tag "exp8a-cutpaste-rn18-fast"
+
+# ── EXPERIMENT 8b ───────────────────────────────────────────────────────────
+# ResNet-50 needs a smaller batch to keep activation memory in check on L4.
+# 32 → effective 96 (same as v1 RN18 setting). With AMP this fits comfortably.
+echo "================================================================"
+echo "EXPERIMENT 8b — CutPaste @ ResNet-50 (richer features, v2 budget)"
+echo "================================================================"
+
+uv run python cutpaste_baseline.py \
+    --data-root  "$DATA" \
+    --report-dir "$OUT" \
+    --backbone resnet50 \
+    --input-size 256 \
+    --feature-layers 1 2 3 \
+    --target-layer 2 \
+    --total-iters 2500 \
+    --batch-size 32 \
+    --num-workers 8 \
+    --lr 0.03 \
+    --weight-decay 3e-5 \
+    --projection-dim 100 \
+    --padim-eps 0.01 \
+    --score-batch-size 12 \
+    --smooth-sigma 1.5 \
+    --tta hvflip \
+    --run-tag "exp8b-cutpaste-rn50-fast"
+
+echo
+echo "================================================================"
+echo "DONE — check $OUT/ablation_master.csv for the two new rows."
+echo "Pick the better of (8a, 8b) by AP_overall for fusion (step 9)."
+echo "================================================================"
 
 
 #!/usr/bin/env bash
@@ -97,39 +97,36 @@
 # cutpaste_baseline.py imports patchify_and_combine and greedy_coreset
 # from it).
 
-set -euo pipefail
 
-DATA=/work/u10813429/anomaly-detection/data
-OUT=/work/u10813429/anomaly-detection/baseline_out
 
-## ── EXPERIMENT 8c ───────────────────────────────────────────────────────────
-#echo "================================================================"
-#echo "EXPERIMENT 8c — CutPaste @ ResNet-18 + PatchCore-NN scoring"
-#echo "================================================================"
-#
-#uv run python cutpaste_baseline.py \
-#    --data-root  "$DATA" \
-#    --report-dir "$OUT" \
-#    --scorer patchcore \
-#    --backbone resnet18 \
-#    --input-size 256 \
-#    --feature-layers 1 2 3 \
-#    --target-layer 2 \
-#    --total-iters 2500 \
-#    --batch-size 64 \
-#    --num-workers 8 \
-#    --lr 0.03 \
-#    --weight-decay 3e-5 \
-#    --coreset-frac 0.05 \
-#    --coreset-algo minibatch \
-#    --coreset-batch 128 \
-#    --memory-dtype fp16 \
-#    --score-chunk 4096 \
-#    --memory-chunk 16384 \
-#    --score-batch-size 16 \
-#    --smooth-sigma 1.5 \
-#    --tta hvflip \
-#    --run-tag "exp8c-cutpaste-rn18-pcnn"
+# ── EXPERIMENT 8c ───────────────────────────────────────────────────────────
+echo "================================================================"
+echo "EXPERIMENT 8c — CutPaste @ ResNet-18 + PatchCore-NN scoring"
+echo "================================================================"
+
+uv run python cutpaste_baseline.py \
+    --data-root  "$DATA" \
+    --report-dir "$OUT" \
+    --scorer patchcore \
+    --backbone resnet18 \
+    --input-size 256 \
+    --feature-layers 1 2 3 \
+    --target-layer 2 \
+    --total-iters 2500 \
+    --batch-size 64 \
+    --num-workers 8 \
+    --lr 0.03 \
+    --weight-decay 3e-5 \
+    --coreset-frac 0.05 \
+    --coreset-algo minibatch \
+    --coreset-batch 128 \
+    --memory-dtype fp16 \
+    --score-chunk 4096 \
+    --memory-chunk 16384 \
+    --score-batch-size 16 \
+    --smooth-sigma 1.5 \
+    --tta hvflip \
+    --run-tag "exp8c-cutpaste-rn18-pcnn"
 
 # ── EXPERIMENT 8d ───────────────────────────────────────────────────────────
 echo "================================================================"

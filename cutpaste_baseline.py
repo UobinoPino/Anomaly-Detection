@@ -96,6 +96,11 @@ from torchvision.models import (
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from patchcore_baseline_v2 import patchify_and_combine, greedy_coreset
 
+# Local-predictions saver: dumps per-pixel local-val score maps + GT
+# masks to <run_dir>/local_predictions.npz for the downstream stackers
+# (logreg / XGBoost). Lives entirely on the host (no GPU memory cost).
+from local_preds_saver import LocalPredSaver
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Defaults
@@ -884,7 +889,8 @@ def append_to_ablation_master(master_csv: Path, row: dict) -> None:
 # Per-class pipeline
 # ─────────────────────────────────────────────────────────────────────────────
 def run_one_class(cls: str, records_all, cfg: RunConfig, run_dir: Path,
-                   device: torch.device) -> dict:
+                   device: torch.device,
+                   local_saver: LocalPredSaver | None = None) -> dict:
     hr(f"CLASS {cls}", "─")
     t_start = time.time()
 
@@ -950,6 +956,17 @@ def run_one_class(cls: str, records_all, cfg: RunConfig, run_dir: Path,
             r = train_anom[ridx]
             ap = pixel_average_precision(s, gt_by_idx[ridx])
             by_anom[r.anomaly_type or "?"].append(ap)
+            # Persist the per-pixel local-val prediction + GT mask so the
+            # downstream stackers can train without re-running this model.
+            if local_saver is not None:
+                local_saver.add(
+                    cls=cls,
+                    anomaly_type=r.anomaly_type or "unknown",
+                    view_idx=ridx,
+                    score_map=s,
+                    gt_mask=gt_by_idx[ridx],
+                    image_path=r.path,
+                )
         print(f"    {'anomaly_type':<14} {'n_views':>8} "
               f"{'pixel-AP (mean ± std)':>26}")
         per_type_means = []
@@ -1094,6 +1111,10 @@ def main():
     ap.add_argument("--save-checkpoints", action="store_true")
     ap.add_argument("--save-banks", action="store_true")
     ap.add_argument("--no-zip", action="store_true")
+    ap.add_argument("--no-save-local-preds", action="store_true",
+                    help="Disable the local_predictions.npz dump. The npz "
+                         "is what the logreg/XGBoost stackers train on, so "
+                         "only pass this in skip-eval-only debugging runs.")
     ap.add_argument("--run-tag", default="")
     args = ap.parse_args()
 
@@ -1184,6 +1205,7 @@ def main():
         print(f"  score_batch_size : {cfg.score_batch_size}")
         print(f"  smooth_sigma     : {cfg.smooth_sigma}")
         print(f"  tta              : {cfg.tta}")
+        print(f"  save_local_preds : {not args.no_save_local_preds}")
         print(f"  device           : {device}")
         if torch.cuda.is_available():
             print(f"                    {torch.cuda.get_device_name(0)}, "
@@ -1203,16 +1225,28 @@ def main():
             classes = [c for c in classes if c in set(cfg.only_classes)]
         print(f"\n  running on {len(classes)} class(es): {', '.join(classes)}")
 
+        # Single saver instance shared across classes — produces one
+        # local_predictions.npz at the run root after all classes are done.
+        local_saver = (LocalPredSaver()
+                       if (not cfg.skip_eval and not args.no_save_local_preds)
+                       else None)
+
         all_test_results = []
         all_eval_rows = []
         class_aps = {}
         class_elapsed = {}
         for cls in classes:
-            res = run_one_class(cls, records, cfg, run_dir, device)
+            res = run_one_class(cls, records, cfg, run_dir, device,
+                                  local_saver=local_saver)
             all_test_results.extend(res["test_results"])
             all_eval_rows.extend(res["eval_rows"])
             class_aps[cls] = res["class_mean_ap"]
             class_elapsed[cls] = res["elapsed_min"]
+
+        # Dump the per-pixel local-val predictions for the stacker. The
+        # saver may be None on --skip-eval / --no-save-local-preds runs.
+        if local_saver is not None and len(local_saver) > 0:
+            local_saver.save(run_dir / "local_predictions.npz")
 
         hr("LOCAL VALIDATION SUMMARY", "=")
         print(f"  {'class':<10} {'mean pixel-AP':>15} {'time (min)':>12}")
