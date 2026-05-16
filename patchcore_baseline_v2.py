@@ -1,7 +1,32 @@
-"""Spacepresso baseline v6 — adds sibling-bank multiview inference.
+"""Spacepresso baseline v7 — adds consensus-v3 multiview path.
 
-Drop-in successor to v5. All v5 efficiency tricks are preserved unchanged:
+Drop-in successor to v6. Both v5 efficiency tricks and the v6 sibling-bank
+path are preserved unchanged. The only new feature is a third
+`--multiview` option:
 
+  --multiview consensus-v3
+
+which delegates to `multiview_consensus.py` for:
+  (B) per-view rank normalisation (train_good empirical CDF per view)
+  (D) good-filtered sibling bank   (anomalous sibling patches excluded)
+  (A) agreement-only boost         (per-sample multiplicative boost ≥ 1)
+
+The previous sibling-bank path had a self-suppression flaw on
+anomalies visible in ≥2 views (sibling bank contained the anomaly →
+mv_inc collapsed → boost ≈ 1-α suppressed real defects). consensus-v3
+fixes this without modifying the no-multiview / sibling-bank paths.
+
+# v6 (recap) — sibling-bank multiview (PRESERVED for back-compat)
+
+  --multiview sibling-bank
+  --mv-alpha FLOAT (default: 0.5)
+
+  Per view i: standard PatchCore score, then sibling-bank inconsistency
+  vs the OTHER views' raw patch features. mv_inc min-max normalised
+  per-sample, then `boost = (1-α) + α*mv_inc`. Multiplicative boost
+  CAN suppress (boost < 1 when mv_norm ≈ 0). Kept for comparison only.
+
+# v5 (recap) — efficiency tricks (unchanged)
   - CPU-resident feature tensor, 32-d random projection on GPU for coreset
   - Mini-batch greedy k-center (sync-free, ~50-100x faster than naive)
   - fp16 memory bank + chunked NN scoring (score_chunk × memory_chunk)
@@ -9,41 +34,7 @@ Drop-in successor to v5. All v5 efficiency tricks are preserved unchanged:
   - Per-(class, anomaly_type) local-AP harness
   - DINOv2 ViT-S/14 / -B/14 / -L/14 backbones via torch.hub
 
-What v6 adds (entirely additive — non-multiview behaviour is unchanged):
-
-  --multiview {none, sibling-bank}   (default: none)
-  --mv-alpha FLOAT                   (default: 0.5)
-
-  When `--multiview sibling-bank` is on, all views of a sample (grouped by
-  `sample_id`) are scored together. For each view V_i:
-    1. Standard PatchCore score (1 - max cos sim to memory bank).
-    2. Sibling bank: patch features of the OTHER (V - 1) views, concatenated.
-    3. View-inconsistency map: 1 - max cos sim between view V_i's patch
-       features and the sibling bank.
-    4. Min-max normalise the inconsistency map across the sample.
-    5. Boost: final = standard * ((1 - alpha) + alpha * mv_inc_norm)
-
-  Rationale (same as EfficientAD's sibling-bank): a real defect appears in
-  1-2 views, so its features differ from any patch of the other 4 views ->
-  high mv_inc -> boost preserved. Spurious bright regions (lighting, complex
-  but consistent texture) recur across views -> low mv_inc -> down-weighted.
-
-  alpha=0 makes multiview a no-op (boost is identically 1.0). alpha=1.0
-  replaces the standard score with the inconsistency signal. Default 0.5
-  is a balanced blend.
-
-# Memory budget on a 24 GB L4
-
-  Multiview adds ONE extra patch-feature tensor per TTA pass that has to
-  stay on GPU until the sibling matmul runs. For DINOv2 ViT-S/14 @ 518
-  with 4 layers fused, V=5, hvflip TTA:
-    pf shape  = (5, 37*37, 4*384) = (5, 1369, 1536)
-    bytes     = 5 * 1369 * 1536 * 4 = 42 MB per pass
-    + score   = 5 * 37 * 37 = 27 KB per pass
-    + accum   = ~84 MB for 2 in-flight passes
-  Easily fits.
-
-# v6 + stacker hook (unchanged)
+# v7 + stacker hook (unchanged)
 
 This file writes a `local_predictions.npz` per run for downstream stacker
 training (see local_preds_saver.py). The hook is non-invasive.
@@ -101,9 +92,9 @@ RESNET_CHANNELS = {
     "resnet18":        {1: 64,  2: 128, 3: 256,  4: 512},
 }
 DINOV2_DIMS = {
-    "dinov2_vits14": 384,    # 12 blocks
-    "dinov2_vitb14": 768,    # 12 blocks
-    "dinov2_vitl14": 1024,   # 24 blocks
+    "dinov2_vits14": 384,
+    "dinov2_vitb14": 768,
+    "dinov2_vitl14": 1024,
 }
 DINOV2_NBLOCKS = {
     "dinov2_vits14": 12,
@@ -701,12 +692,15 @@ class PatchCore:
             _add(s)
         return accumulator / max(n, 1)
 
-    # ── Multiview-aware scoring (v6) ────────────────────────────────────────
+    # ── Multiview-aware scoring (v6 sibling-bank, PRESERVED) ────────────────
     @torch.inference_mode()
     def _compute_score_and_pf(self, x: torch.Tensor):
         """Shared inner: returns (score_lr (B, H, W) on GPU,
-        pf (B, P, C) L2-normed on GPU). Used by both the standard
-        single-image path and the multiview path."""
+        pf (B, P, C) L2-normed on GPU). Used by:
+          - standard single-image score path
+          - v6 sibling-bank multiview path
+          - v7 consensus-v3 multiview path (via multiview_consensus.py)
+        """
         assert self.memory is not None, "fit() first"
         maps = self.extractor(x.to(self.device, non_blocking=True),
                               layers=self.cfg.feature_layers)
@@ -743,19 +737,14 @@ class PatchCore:
     def score_sample_with_siblings(self, x_sample: torch.Tensor,
                                      tta: str = "none",
                                      mv_alpha: float = 0.5) -> torch.Tensor:
-        """All views of one sample batched together.
+        """[v6 sibling-bank] All views of one sample batched together.
 
-        x_sample: (V, 3, H, W). Returns (V, input_size, input_size) on CPU.
-
-        For each view V_i:
-          - standard score    = 1 - max cos sim to memory bank
-          - sibling-bank      = patch features of the OTHER (V-1) views
-          - mv_inconsistency  = 1 - max cos sim to sibling bank
-          - boost             = (1 - alpha) + alpha * minmax(mv_inconsistency)
-          - final             = standard * boost   (then upsample)
-        TTA is applied to BOTH the score and the patch features and
-        averaged before sibling computation (spatial transforms inverted
-        first to align)."""
+        Kept for backward compatibility / ablation comparison. NOTE: this
+        path is known to self-suppress on anomalies visible in ≥2 views
+        (sibling bank contains the anomaly → mv_inc collapses). For
+        production, prefer `--multiview consensus-v3` which routes
+        through multiview_consensus.py.
+        """
         device = self.device
         x_sample = x_sample.to(device, non_blocking=True)
 
@@ -773,12 +762,10 @@ class PatchCore:
                 acc_pf += pf
             n_acc += 1
 
-        # Identity pass
         s, pf = self._compute_score_and_pf(x_sample)
         _add(s, pf)
 
         def _invert_pf_flip(pf2, flip_dim_in_grid):
-            """flip_dim_in_grid: -2 for W (hflip undo), -3 for H (vflip undo)."""
             Bf, Pf, Cf = pf2.shape
             Hf = Wf = int(math.isqrt(Pf))
             return torch.flip(pf2.reshape(Bf, Hf, Wf, Cf),
@@ -805,7 +792,6 @@ class PatchCore:
 
         score_lr = acc_score / n_acc
         pf = acc_pf / n_acc
-        # Re-normalise after averaging (each individual pf was L2-normed).
         pf = F.normalize(pf, p=2, dim=-1)
 
         V, P, C = pf.shape
@@ -817,11 +803,10 @@ class PatchCore:
                                mode="bilinear", align_corners=False).squeeze(1)
             return up.cpu()
 
-        # Per-view inconsistency vs sibling bank.
         mv_dist = torch.empty(V, P, device=device, dtype=torch.float32)
         for i in range(V):
             siblings = torch.cat([pf[j] for j in range(V) if j != i], dim=0)
-            sim = pf[i].float() @ siblings.float().T   # (P, (V-1)*P)
+            sim = pf[i].float() @ siblings.float().T
             max_sim = sim.max(dim=1).values
             mv_dist[i] = 1.0 - max_sim
             del siblings, sim, max_sim
@@ -947,9 +932,14 @@ class RunConfig:
     smooth_sigma: float = 1.5
     knn_k: int = 9
     tta: str = "none"
-    # v6: multiview
-    multiview: str = "none"          # "none" | "sibling-bank"
+    # v6: sibling-bank multiview
+    multiview: str = "none"          # "none" | "sibling-bank" | "consensus-v3"
     mv_alpha: float = 0.5
+    # v7: consensus-v3 hyperparameters
+    mv_beta: float = 0.4
+    good_keep_frac: float = 0.7
+    agreement_pct: float = 95.0
+    agreement_thresh: float = 0.90
     # bookkeeping
     seed: int = 0
     only_classes: list[str] = field(default_factory=list)
@@ -962,7 +952,7 @@ class RunConfig:
 
 
 def make_run_id(cfg: RunConfig) -> str:
-    fp = json.dumps({
+    fp_dict = {
         "backbone": cfg.backbone,
         "feature_layers": list(cfg.feature_layers),
         "target_layer": cfg.target_layer,
@@ -982,8 +972,17 @@ def make_run_id(cfg: RunConfig) -> str:
         "multiview": cfg.multiview,
         "mv_alpha": cfg.mv_alpha if cfg.multiview != "none" else 0,
         "seed": cfg.seed,
-        "v": 6,
-    }, sort_keys=True).encode("utf-8")
+        "v": 7,
+    }
+    # Only fold consensus-v3 hyperparams into the hash when they matter.
+    if cfg.multiview == "consensus-v3":
+        fp_dict.update({
+            "mv_beta": cfg.mv_beta,
+            "good_keep_frac": cfg.good_keep_frac,
+            "agreement_pct": cfg.agreement_pct,
+            "agreement_thresh": cfg.agreement_thresh,
+        })
+    fp = json.dumps(fp_dict, sort_keys=True).encode("utf-8")
     digest = hashlib.sha1(fp).hexdigest()[:6]
     stamp = time.strftime("%Y%m%d-%H%M%S")
     bb = BACKBONE_SHORT[cfg.backbone]
@@ -1001,8 +1000,10 @@ def make_run_id(cfg: RunConfig) -> str:
         bits += f"_{cfg.memory_dtype}"
     if cfg.tta != "none":
         bits += f"_tta-{cfg.tta}"
-    if cfg.multiview != "none":
+    if cfg.multiview == "sibling-bank":
         bits += f"_mv-a{cfg.mv_alpha:.2f}"
+    elif cfg.multiview == "consensus-v3":
+        bits += f"_cv3-a{cfg.mv_alpha:.2f}-b{cfg.mv_beta:.2f}"
     if cfg.run_tag:
         bits += f"_{re.sub(r'[^A-Za-z0-9._-]+', '-', cfg.run_tag)}"
     return f"{bits}_{digest}"
@@ -1084,7 +1085,7 @@ def _score_records_standard_pc(pc: PatchCore, records: list[ImageRecord],
 def _score_records_by_sample_pc(pc: PatchCore, records: list[ImageRecord],
                                  cfg: RunConfig, load_masks: bool
                                  ) -> tuple[dict, dict]:
-    """Group by sample_id, score all views of each sample together using
+    """[v6 sibling-bank] Group by sample_id, score all views together via
     pc.score_sample_with_siblings."""
     by_sample: dict[str, list[tuple[int, ImageRecord]]] = defaultdict(list)
     for idx, r in enumerate(records):
@@ -1157,6 +1158,19 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
     pc = PatchCore(pc_cfg)
     pc.fit(train_good)
 
+    # ── v7: fit per-view rank-norm LUTs if consensus-v3 ─────────────────────
+    view_luts: dict[int, np.ndarray] = {}
+    if cfg.multiview == "consensus-v3":
+        from multiview_consensus import fit_per_view_norm
+        print(f"    [{now_hms()}] fitting per-view rank-normalisation tables...")
+        view_luts = fit_per_view_norm(
+            pc, train_good,
+            batch_size=cfg.score_batch_size,
+            num_workers=cfg.num_workers)
+        if cfg.save_memory_banks:
+            from multiview_consensus import save_view_luts
+            save_view_luts(view_luts, run_dir / "banks" / f"{cls}_view_luts.npz")
+
     if cfg.save_memory_banks:
         bank_path = run_dir / "banks" / f"{cls}_memory.pt"
         bank_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1170,18 +1184,28 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
                     "config": asdict(pc_cfg)}, bank_path)
         print(f"    saved memory bank -> {bank_path}")
 
-    # Pick scoring function: vanilla or sample-grouped multiview.
-    score_fn = (_score_records_by_sample_pc
-                if cfg.multiview == "sibling-bank"
-                else _score_records_standard_pc)
+    # Pick scoring function: vanilla / v6 sibling-bank / v7 consensus-v3.
+    if cfg.multiview == "consensus-v3":
+        from multiview_consensus import score_records_by_sample_consensus
+        def score_fn(_pc, records, _cfg, load_masks):
+            return score_records_by_sample_consensus(
+                _pc, records, _cfg, load_masks, view_luts)
+    elif cfg.multiview == "sibling-bank":
+        score_fn = _score_records_by_sample_pc
+    else:
+        score_fn = _score_records_standard_pc
 
     eval_rows: list[dict] = []
     class_mean_ap = float("nan")
     if not cfg.skip_eval and train_anom:
+        mv_tag = cfg.multiview
+        if mv_tag == "sibling-bank":
+            mv_tag = f"sibling-bank, alpha={cfg.mv_alpha}"
+        elif mv_tag == "consensus-v3":
+            mv_tag = (f"consensus-v3, alpha={cfg.mv_alpha} beta={cfg.mv_beta} "
+                      f"keep={cfg.good_keep_frac} thr={cfg.agreement_thresh}")
         sub(f"local validation — per-anomaly-type pixel-AP  "
-            f"(tta={cfg.tta}, multiview={cfg.multiview}"
-            + (f", alpha={cfg.mv_alpha}" if cfg.multiview != "none" else "")
-            + ")")
+            f"(tta={cfg.tta}, multiview={mv_tag})")
         scores_raw, gts = score_fn(pc, train_anom, cfg, load_masks=True)
         scores_per_idx: dict[int, np.ndarray] = {}
         gt_per_idx: dict[int, np.ndarray] = {}
@@ -1224,10 +1248,12 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
 
     test_results: list[tuple[ImageRecord, np.ndarray]] = []
     if not cfg.skip_submission and test:
-        sub(f"scoring {len(test)} test images "
-            f"(tta={cfg.tta}, multiview={cfg.multiview}"
-            + (f", alpha={cfg.mv_alpha}" if cfg.multiview != "none" else "")
-            + ")")
+        mv_tag = cfg.multiview
+        if mv_tag == "sibling-bank":
+            mv_tag = f"sibling-bank, alpha={cfg.mv_alpha}"
+        elif mv_tag == "consensus-v3":
+            mv_tag = f"consensus-v3, alpha={cfg.mv_alpha} beta={cfg.mv_beta}"
+        sub(f"scoring {len(test)} test images (tta={cfg.tta}, multiview={mv_tag})")
         scores_raw, _ = score_fn(pc, test, cfg, load_masks=False)
         for r_idx, sm_raw in scores_raw.items():
             sm = gaussian_smooth(sm_raw, cfg.smooth_sigma)
@@ -1308,15 +1334,33 @@ def main():
     ap.add_argument("--tta", default="none",
                     choices=["none", "hflip", "vflip", "hvflip", "d4"])
     ap.add_argument("--multiview", default="none",
-                    choices=["none", "sibling-bank"],
-                    help="`sibling-bank`: at scoring time, batch all views "
-                         "of a sample and use the OTHER views' patch "
+                    choices=["none", "sibling-bank", "consensus-v3"],
+                    help="`sibling-bank` (v6): at scoring time, batch all "
+                         "views of a sample and use the OTHER views' patch "
                          "features as a per-sample memory bank that boosts "
-                         "view-inconsistent pixels.")
+                         "view-inconsistent pixels. NOTE: this path "
+                         "self-suppresses on anomalies visible in >=2 "
+                         "views. `consensus-v3` (v7): per-view rank-norm + "
+                         "good-filtered sibling bank + agreement-only "
+                         "boost, all delegated to multiview_consensus.py.")
     ap.add_argument("--mv-alpha", type=float, default=0.5,
-                    help="Multi-view blend weight in [0, 1]. 0 disables "
-                         "the boost; 1 fully replaces the standard score "
-                         "with the inconsistency signal.")
+                    help="(both multiview modes) blend weight in [0, 1]. "
+                         "For consensus-v3: weight of the good-filtered "
+                         "sibling additive refinement. 0 disables (D).")
+    ap.add_argument("--mv-beta", type=float, default=0.4,
+                    help="(consensus-v3) max per-sample agreement boost. "
+                         "Final score <= refined * (1 + beta). 0 disables (A).")
+    ap.add_argument("--good-keep-frac", type=float, default=0.7,
+                    help="(consensus-v3) fraction of lowest-score sibling "
+                         "patches kept as 'good' for the filtered sibling "
+                         "bank. Smaller = stricter filter, more aggressive "
+                         "boost on multi-view-visible anomalies.")
+    ap.add_argument("--agreement-pct", type=float, default=95.0,
+                    help="(consensus-v3) percentile of each refined map "
+                         "used as that view's anomaly intensity.")
+    ap.add_argument("--agreement-thresh", type=float, default=0.90,
+                    help="(consensus-v3) rank-norm threshold above which "
+                         "a view is said to agree the sample is anomalous.")
     ap.add_argument("--aggressive-cleanup", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--only-classes", nargs="*", default=[])
@@ -1349,6 +1393,17 @@ def main():
     if not (0.0 <= args.mv_alpha <= 1.0):
         raise SystemExit(f"[FATAL] --mv-alpha must be in [0, 1]; "
                           f"got {args.mv_alpha}")
+    if args.mv_beta < 0.0:
+        raise SystemExit(f"[FATAL] --mv-beta must be >= 0; got {args.mv_beta}")
+    if not (0.0 < args.good_keep_frac <= 1.0):
+        raise SystemExit(f"[FATAL] --good-keep-frac must be in (0, 1]; "
+                          f"got {args.good_keep_frac}")
+    if not (0.0 <= args.agreement_pct <= 100.0):
+        raise SystemExit(f"[FATAL] --agreement-pct must be in [0, 100]; "
+                          f"got {args.agreement_pct}")
+    if not (0.0 <= args.agreement_thresh <= 1.0):
+        raise SystemExit(f"[FATAL] --agreement-thresh must be in [0, 1]; "
+                          f"got {args.agreement_thresh}")
 
     cfg = RunConfig(
         data_root=args.data_root, report_dir=args.report_dir,
@@ -1370,6 +1425,10 @@ def main():
         smooth_sigma=args.smooth_sigma, knn_k=args.knn_k,
         tta=args.tta,
         multiview=args.multiview, mv_alpha=args.mv_alpha,
+        mv_beta=args.mv_beta,
+        good_keep_frac=args.good_keep_frac,
+        agreement_pct=args.agreement_pct,
+        agreement_thresh=args.agreement_thresh,
         seed=args.seed, only_classes=args.only_classes,
         skip_eval=args.skip_eval, skip_submission=args.skip_submission,
         save_memory_banks=not args.no_save_banks,
@@ -1383,7 +1442,7 @@ def main():
     run_dir.mkdir(parents=True, exist_ok=True)
 
     with tee_to(run_dir / "run_log.txt"):
-        hr(f"PATCHCORE v6 (DINOv2+multiview) — RUN {run_id}", "█")
+        hr(f"PATCHCORE v7 (DINOv2+consensus-v3) — RUN {run_id}", "█")
         print(f"  data_root        : {cfg.data_root}")
         print(f"  report_dir       : {cfg.report_dir}")
         print(f"  run_dir          : {run_dir}")
@@ -1407,7 +1466,15 @@ def main():
         print(f"  project_chunk    : {cfg.project_chunk}")
         print(f"  smooth_sigma     : {cfg.smooth_sigma}")
         print(f"  tta              : {cfg.tta}")
-        print(f"  multiview        : {cfg.multiview}  alpha={cfg.mv_alpha}")
+        print(f"  multiview        : {cfg.multiview}")
+        if cfg.multiview == "sibling-bank":
+            print(f"                     alpha={cfg.mv_alpha}")
+        elif cfg.multiview == "consensus-v3":
+            print(f"                     alpha={cfg.mv_alpha} (D) "
+                  f"beta={cfg.mv_beta} (A)")
+            print(f"                     good_keep_frac={cfg.good_keep_frac}")
+            print(f"                     agreement_pct={cfg.agreement_pct} "
+                  f"agreement_thresh={cfg.agreement_thresh}")
         print(f"  save_banks       : {cfg.save_memory_banks}")
         print(f"  save_local_preds : {not args.no_save_local_preds}")
         print(f"  aggressive_clean : {cfg.aggressive_cleanup}")
@@ -1478,9 +1545,15 @@ def main():
                   f"    {run_dir / 'submission.zip'}")
 
         master_csv = cfg.report_dir / "ablation_master.csv"
-        notes = ""
-        if cfg.multiview != "none":
-            notes = f"multiview={cfg.multiview} mv_alpha={cfg.mv_alpha}"
+        if cfg.multiview == "sibling-bank":
+            notes = f"multiview=sibling-bank mv_alpha={cfg.mv_alpha}"
+        elif cfg.multiview == "consensus-v3":
+            notes = (f"multiview=consensus-v3 "
+                     f"alpha={cfg.mv_alpha} beta={cfg.mv_beta} "
+                     f"keep={cfg.good_keep_frac} "
+                     f"pct={cfg.agreement_pct} thr={cfg.agreement_thresh}")
+        else:
+            notes = ""
         row = {
             "run_id": run_id,
             "run_tag": cfg.run_tag,
