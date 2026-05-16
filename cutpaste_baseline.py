@@ -1,76 +1,41 @@
 """Spacepresso CutPaste — self-supervised pixel-level anomaly detection.
 
-# v3 changes (PaDiM → PatchCore-NN scoring by default)
+# v4 changes (sibling-bank multiview, additive)
 
-v1/v2 used PaDiM (per-position Gaussian + Mahalanobis) as the pixel-level
-scorer. On MVTec-AD this works because objects are precisely centred and
-each spatial position has consistent statistics across the train set.
-Spacepresso is **multi-view** (5 angles per sample), so a single position
-in the score grid corresponds to wildly different parts of the object
-across views — the per-position Gaussian becomes multi-modal, variance
-blows up, and Mahalanobis distance shrinks to ~0 for everything. Result:
-the user's v2 PaDiM run scored 0.2491 overall vs ~0.42-0.46 for vanilla
-PatchCore. PaDiM was the wrong scorer for this dataset.
+v3 introduced PatchCore-style NN scoring as the default. v4 adds opt-in
+**sibling-bank multiview** inference on the PatchCore scorer, mirroring the
+implementation in efficientad_baseline.py and patchcore_baseline_v2.py.
 
-v3 defaults to **PatchCore-style NN scoring** on the CutPaste-trained
-features. Same training paradigm (3-way classification on normal /
-CutPaste / CutPaste-Scar to learn anomaly-aware features), but at
-inference:
+  --multiview {none, sibling-bank}   (default: none)
+  --mv-alpha FLOAT                    (default: 0.5)
 
-  1. Patchify (3x3 AvgPool over feature grid) + multi-scale concat
-     + L2-normalise (same as PatchCore).
-  2. Greedy k-center coreset over all train_good patch features.
-  3. For each test patch: score = 1 - max(cos_sim(query, memory_bank)).
-  4. Bilinear upsample → Gaussian smooth → q8rle.
+  When `--multiview sibling-bank` is on (and `--scorer patchcore`), test
+  samples are grouped by `sample_id` and all views are batched. For each
+  view V_i:
+    1. Standard CutPaste-NN score (1 - max cos sim to memory bank).
+    2. Sibling bank: patch features of the OTHER (V - 1) views.
+    3. View-inconsistency map: 1 - max cos sim to sibling bank.
+    4. Min-max normalise across the sample.
+    5. Boost: final = standard * ((1 - alpha) + alpha * mv_inc_norm)
 
-The PaDiM scorer is kept behind `--scorer padim` for completeness and
-reproducibility, but the default is now `--scorer patchcore`.
+  alpha=0 makes multiview a no-op. alpha=1 fully replaces the standard
+  score with the view-inconsistency signal. 0.5 is a balanced default.
 
-Both scorers use the same:
-  - CutPaste training (unchanged from v2)
-  - Submission format (q8rle, calibrated to [0, 1])
-  - local_eval.csv schema (so score_fusion.py works for either)
+  The multiview path only works with `--scorer patchcore`. Passing
+  `--multiview sibling-bank --scorer padim` aborts with a clear error
+  (PaDiM has no per-pixel features matching the sibling-bank shape).
 
-# Why this should give a usable fusion partner
+# v3 (recap) — PaDiM → PatchCore-NN scoring by default
 
-  Method 1 (exp5):  WRN50 frozen ImageNet + PatchCore NN
-  Method 2 (exp7):  DINOv2 frozen SSL    + PatchCore NN
-  Method 3 (exp8c): ResNet-18 *fine-tuned with CutPaste* + PatchCore NN
+v1/v2 used PaDiM (per-position Gaussian + Mahalanobis). Position-aligned
+PaDiM is multi-modal on multi-view data: variance blows up, Mahalanobis
+shrinks to ~0 everywhere, AP collapses to ~0.25. v3 defaults to PatchCore
+NN over the CutPaste-trained features. The PaDiM path is preserved
+behind `--scorer padim` for completeness.
 
-All three use NN scoring on different features. The diversity is the
-feature space, with method 3 being the only one with anomaly-aware
-fine-tuning.
+# v4 + stacker hook (unchanged)
 
-# v3 + stacker hook
-
-This file also writes a `local_predictions.npz` per run for downstream
-stacker training (logreg_stacker.py / xgboost_stacker.py). The hook is
-non-invasive: a `LocalPredSaver` instance is threaded through
-`run_one_class`, populated alongside the existing pixel-AP computation,
-and dumped once at the end of `main()`. Behaviour of every existing
-output (submission.csv, local_eval.csv, ablation_master.csv) is
-unchanged.
-
-# CLI
-
-  --scorer patchcore  (default)  PatchCore NN over trained features
-  --scorer padim                 legacy PaDiM Gaussian (use only if you
-                                  understand the position-alignment caveat)
-
-  PatchCore-only knobs:
-      --coreset-frac        (default 0.05)
-      --coreset-algo        minibatch | exact  (default minibatch)
-      --coreset-batch       (default 128)
-      --score-chunk         (default 4096)
-      --memory-chunk        (default 16384)
-      --memory-dtype        fp16 | fp32  (default fp16)
-      --project-chunk       (default 65536)
-      --patch-size          (default 3)
-      --coreset-fp16        store CPU features as fp16 before coreset
-
-The PatchCore helpers (patchify_and_combine + greedy_coreset) are
-imported from patchcore_baseline_v2.py — both files must live in the
-same directory.
+Writes `local_predictions.npz` per run for downstream stacker training.
 """
 from __future__ import annotations
 
@@ -405,7 +370,7 @@ class CutPasteNet(nn.Module):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Training (unchanged from v2)
+# Training (unchanged from v2/v3)
 # ─────────────────────────────────────────────────────────────────────────────
 def train_cutpaste(model, records, cfg, device):
     ds = CutPasteTrainDataset(
@@ -477,7 +442,7 @@ def train_cutpaste(model, records, cfg, device):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Scorer 1 — PatchCore-style NN (new default in v3)
+# Scorer 1 — PatchCore-style NN
 # ─────────────────────────────────────────────────────────────────────────────
 def fit_memory_bank(model: CutPasteNet, records: list[ImageRecord],
                     cfg: "RunConfig", device: torch.device) -> dict:
@@ -549,8 +514,11 @@ def fit_memory_bank(model: CutPasteNet, records: list[ImageRecord],
 
 
 @torch.inference_mode()
-def _nn_score_one(model: CutPasteNet, x: torch.Tensor,
-                    bank: dict, cfg: "RunConfig") -> torch.Tensor:
+def _nn_compute_score_and_pf(model: CutPasteNet, x: torch.Tensor,
+                              bank: dict, cfg: "RunConfig"):
+    """Shared inner: returns (score_lr (B, H, W) on GPU,
+    pf (B, P, C) L2-normed on GPU). Used by BOTH the standard
+    per-image scoring and the multiview sample-grouped scoring."""
     maps = model.extract_features(x, layers=bank["feature_layers"])
     pf = patchify_and_combine(maps, patch_size=bank["patch_size"],
                                 target_layer=bank["target_layer"])
@@ -576,13 +544,20 @@ def _nn_score_one(model: CutPasteNet, x: torch.Tensor,
             del sim, chunk_max
         dist_min[s:e] = (1.0 - max_sim.float())
         del q, max_sim
-    del flat, pf
     score_lr = dist_min.reshape(B, H, W)
+    del flat, dist_min
+    return score_lr, pf
+
+
+@torch.inference_mode()
+def _nn_score_one(model, x, bank, cfg):
+    """Returns upsampled (B, input_size, input_size) score on CPU."""
+    score_lr, _ = _nn_compute_score_and_pf(model, x, bank, cfg)
     score = F.interpolate(score_lr.unsqueeze(1),
                           size=(cfg.input_size, cfg.input_size),
                           mode="bilinear", align_corners=False).squeeze(1)
     out = score.cpu()
-    del dist_min, score_lr, score
+    del score_lr, score
     return out
 
 
@@ -609,6 +584,111 @@ def nn_score_batch(model, x, bank, cfg, tta="none", device=None):
             s = _nn_score_one(model, torch.rot90(x, k=k, dims=[-2, -1]), bank, cfg)
             _add(torch.rot90(s, k=-k, dims=[-2, -1]))
     return acc / max(n, 1)
+
+
+@torch.inference_mode()
+def nn_score_sample_with_siblings(model, x_sample: torch.Tensor,
+                                    bank: dict, cfg: "RunConfig",
+                                    device: torch.device) -> torch.Tensor:
+    """All views of one sample batched together. Returns
+    (V, input_size, input_size) on CPU.
+
+    For each view V_i:
+      - standard score   = 1 - max cos sim to memory bank
+      - sibling bank     = patch features of the OTHER (V-1) views
+      - mv_inconsistency = 1 - max cos sim to sibling bank
+      - boost            = (1 - alpha) + alpha * minmax(mv_inconsistency)
+      - final            = standard * boost   (then upsample)
+
+    TTA is applied to BOTH the score and the patch features, then
+    averaged before sibling computation (spatial transforms inverted
+    first to align). Mirrors PatchCore.score_sample_with_siblings."""
+    x_sample = x_sample.to(device, non_blocking=True)
+
+    acc_score = None
+    acc_pf = None
+    n_acc = 0
+
+    def _add(s, pf):
+        nonlocal acc_score, acc_pf, n_acc
+        if acc_score is None:
+            acc_score = s.clone()
+            acc_pf = pf.clone()
+        else:
+            acc_score += s
+            acc_pf += pf
+        n_acc += 1
+
+    def _invert_pf_flip(pf2, flip_dim_in_grid):
+        """flip_dim_in_grid: -2 for W (hflip undo), -3 for H (vflip undo)."""
+        Bf, Pf, Cf = pf2.shape
+        Hf = Wf = int(math.isqrt(Pf))
+        return torch.flip(pf2.reshape(Bf, Hf, Wf, Cf),
+                          dims=[flip_dim_in_grid]).reshape(Bf, Pf, Cf)
+
+    def _invert_pf_rot(pf2, k):
+        Bf, Pf, Cf = pf2.shape
+        Hf = Wf = int(math.isqrt(Pf))
+        return torch.rot90(pf2.reshape(Bf, Hf, Wf, Cf),
+                            k=-k, dims=[-3, -2]).reshape(Bf, Pf, Cf)
+
+    # Identity pass
+    s, pf = _nn_compute_score_and_pf(model, x_sample, bank, cfg)
+    _add(s, pf)
+    tta = cfg.tta
+    if tta in ("hflip", "hvflip", "d4"):
+        s2, pf2 = _nn_compute_score_and_pf(
+            model, torch.flip(x_sample, dims=[-1]), bank, cfg)
+        _add(torch.flip(s2, dims=[-1]), _invert_pf_flip(pf2, -2))
+    if tta in ("vflip", "hvflip", "d4"):
+        s2, pf2 = _nn_compute_score_and_pf(
+            model, torch.flip(x_sample, dims=[-2]), bank, cfg)
+        _add(torch.flip(s2, dims=[-2]), _invert_pf_flip(pf2, -3))
+    if tta == "d4":
+        for k in (1, 2, 3):
+            s2, pf2 = _nn_compute_score_and_pf(
+                model, torch.rot90(x_sample, k=k, dims=[-2, -1]), bank, cfg)
+            _add(torch.rot90(s2, k=-k, dims=[-2, -1]),
+                 _invert_pf_rot(pf2, k))
+
+    score_lr = acc_score / n_acc
+    pf = acc_pf / n_acc
+    # Re-normalise after averaging (each individual pf was L2-normed).
+    pf = F.normalize(pf, p=2, dim=-1)
+
+    V, P, C = pf.shape
+    H = W = int(math.isqrt(P))
+
+    if V < 2:
+        up = F.interpolate(score_lr.unsqueeze(1),
+                           size=(cfg.input_size, cfg.input_size),
+                           mode="bilinear", align_corners=False).squeeze(1)
+        return up.cpu()
+
+    # Per-view inconsistency vs sibling bank.
+    mv_dist = torch.empty(V, P, device=device, dtype=torch.float32)
+    for i in range(V):
+        siblings = torch.cat([pf[j] for j in range(V) if j != i], dim=0)
+        sim = pf[i].float() @ siblings.float().T   # (P, (V-1)*P)
+        max_sim = sim.max(dim=1).values
+        mv_dist[i] = 1.0 - max_sim
+        del siblings, sim, max_sim
+
+    mv_dist = mv_dist.reshape(V, H, W)
+    sd_min = mv_dist.min(); sd_max = mv_dist.max()
+    if (sd_max - sd_min) > 1e-9:
+        mv_norm = (mv_dist - sd_min) / (sd_max - sd_min)
+    else:
+        mv_norm = torch.zeros_like(mv_dist)
+
+    boost = (1.0 - cfg.mv_alpha) + cfg.mv_alpha * mv_norm
+    boosted = score_lr * boost
+    up = F.interpolate(boosted.unsqueeze(1),
+                       size=(cfg.input_size, cfg.input_size),
+                       mode="bilinear", align_corners=False).squeeze(1)
+    out = up.cpu()
+    del pf, mv_dist, mv_norm, boost, boosted, score_lr, up
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -822,6 +902,9 @@ class RunConfig:
     score_batch_size: int = 16
     smooth_sigma: float = 1.5
     tta: str = "hvflip"
+    # v4: multiview (PatchCore scorer only)
+    multiview: str = "none"          # "none" | "sibling-bank"
+    mv_alpha: float = 0.5
     # Bookkeeping
     seed: int = 0
     only_classes: list[str] = field(default_factory=list)
@@ -850,8 +933,10 @@ def make_run_id(cfg: RunConfig) -> str:
         "projection_dim": cfg.projection_dim if cfg.scorer == "padim" else None,
         "smooth_sigma": cfg.smooth_sigma,
         "tta": cfg.tta,
+        "multiview": cfg.multiview,
+        "mv_alpha": cfg.mv_alpha if cfg.multiview != "none" else 0,
         "seed": cfg.seed,
-        "v": 3,
+        "v": 4,
     }, sort_keys=True).encode("utf-8")
     digest = hashlib.sha1(fp).hexdigest()[:6]
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -868,6 +953,8 @@ def make_run_id(cfg: RunConfig) -> str:
             f"_{budget}_bs{cfg.batch_size}_{scorer_bits}")
     if cfg.tta != "none":
         bits += f"_tta-{cfg.tta}"
+    if cfg.multiview != "none":
+        bits += f"_mv-a{cfg.mv_alpha:.2f}"
     if cfg.run_tag:
         bits += f"_{re.sub(r'[^A-Za-z0-9._-]+', '-', cfg.run_tag)}"
     return f"{bits}_{digest}"
@@ -891,6 +978,91 @@ def append_to_ablation_master(master_csv: Path, row: dict) -> None:
         w.writeheader()
         for r in existing_rows:
             w.writerow({k: r.get(k, "") for k in fieldnames})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scoring helpers — standard vs sample-grouped
+# ─────────────────────────────────────────────────────────────────────────────
+def _build_transform_cp(input_size: int):
+    return transforms.Compose([
+        transforms.Resize((input_size, input_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+    ])
+
+
+def _load_one_cp(r: ImageRecord, transform, load_masks: bool,
+                  input_size: int):
+    with Image.open(r.path) as im:
+        x = transform(im.convert("RGB"))
+    if load_masks and r.mask_path is not None:
+        with Image.open(r.mask_path) as mm:
+            mm = mm.convert("L").resize(
+                (input_size, input_size), Image.NEAREST)
+            m = (np.asarray(mm) > 127).astype(np.float32)
+    else:
+        m = np.zeros((input_size, input_size), dtype=np.float32)
+    return x, m
+
+
+def _score_records_standard_cp(score_fn, records: list[ImageRecord],
+                                cfg: RunConfig, load_masks: bool
+                                ) -> tuple[dict, dict]:
+    """Vanilla per-image scoring. `score_fn(x, tta)` returns
+    (B, input_size, input_size) on CPU."""
+    ds = InferenceDataset(records, input_size=cfg.input_size,
+                            load_masks=load_masks)
+    loader = DataLoader(ds, batch_size=cfg.score_batch_size, shuffle=False,
+                         num_workers=cfg.num_workers, pin_memory=True,
+                         persistent_workers=(cfg.num_workers > 0))
+    scores: dict[int, np.ndarray] = {}
+    gts: dict[int, np.ndarray] = {}
+    n_done = 0; last_log = 0
+    with torch.inference_mode():
+        for x, masks, idxs in loader:
+            sm = score_fn(x, cfg.tta).numpy()
+            m_np = masks.numpy()
+            for b in range(sm.shape[0]):
+                scores[int(idxs[b])] = sm[b]
+                gts[int(idxs[b])] = m_np[b]
+            n_done += sm.shape[0]
+            if n_done - last_log >= 200:
+                last_log = n_done
+                print(f"      scored {n_done}/{len(records)}", flush=True)
+    return scores, gts
+
+
+def _score_records_by_sample_cp(score_sample_fn, records: list[ImageRecord],
+                                 cfg: RunConfig, load_masks: bool
+                                 ) -> tuple[dict, dict]:
+    """Group by sample_id, score all views together via score_sample_fn,
+    which takes a (V, 3, H, W) batch and returns (V, input_size, input_size)."""
+    by_sample: dict[str, list[tuple[int, ImageRecord]]] = defaultdict(list)
+    for idx, r in enumerate(records):
+        sid = r.sample_id or r.path.stem
+        by_sample[sid].append((idx, r))
+    print(f"      grouped {len(records)} images into {len(by_sample)} samples")
+
+    transform = _build_transform_cp(cfg.input_size)
+    scores: dict[int, np.ndarray] = {}
+    gts: dict[int, np.ndarray] = {}
+    n_done = 0; last_log = 0
+    for sid, items in by_sample.items():
+        imgs: list[torch.Tensor] = []
+        masks_np: list[np.ndarray] = []
+        for _idx, r in items:
+            x, m = _load_one_cp(r, transform, load_masks, cfg.input_size)
+            imgs.append(x); masks_np.append(m)
+        x_batch = torch.stack(imgs)
+        sm = score_sample_fn(x_batch).numpy()
+        for k, (idx, _r) in enumerate(items):
+            scores[idx] = sm[k]
+            gts[idx] = masks_np[k]
+        n_done += len(items)
+        if n_done - last_log >= 200:
+            last_log = n_done
+            print(f"      scored {n_done}/{len(records)}", flush=True)
+    return scores, gts
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -922,18 +1094,28 @@ def run_one_class(cls: str, records_all, cfg: RunConfig, run_dir: Path,
         torch.save(model.state_dict(), ck)
         print(f"    saved checkpoint -> {ck}")
 
-    # Build the scorer-specific structure.
+    # Build the scorer-specific structure + scoring closures.
     if cfg.scorer == "patchcore":
         bank = fit_memory_bank(model, train_good, cfg, device)
-        def _score(x, tta): return nn_score_batch(model, x, bank, cfg,
-                                                    tta=tta, device=device)
+        def _score(x, tta):
+            return nn_score_batch(model, x, bank, cfg, tta=tta, device=device)
+        def _score_sample(x_sample):
+            return nn_score_sample_with_siblings(
+                model, x_sample, bank, cfg, device=device)
         bank_for_save = bank
     elif cfg.scorer == "padim":
+        if cfg.multiview != "none":
+            raise SystemExit(
+                "[FATAL] --multiview sibling-bank requires --scorer patchcore "
+                "(PaDiM has no per-pixel features compatible with the "
+                "sibling-bank shape).")
         padim = fit_padim(model, train_good, cfg, device,
                             feature_layers=cfg.feature_layers)
-        def _score(x, tta): return padim_score_batch(model, x, padim,
-                                                       input_size=cfg.input_size,
-                                                       tta=tta, device=device)
+        def _score(x, tta):
+            return padim_score_batch(model, x, padim,
+                                      input_size=cfg.input_size,
+                                      tta=tta, device=device)
+        _score_sample = None
         bank_for_save = padim
     else:
         raise ValueError(f"unknown scorer: {cfg.scorer}")
@@ -945,32 +1127,34 @@ def run_one_class(cls: str, records_all, cfg: RunConfig, run_dir: Path,
                     for k, v in bank_for_save.items()}, bp)
         print(f"    saved bank -> {bp}")
 
+    # Pick scoring helper: vanilla (per-image) or sample-grouped (multiview).
+    if cfg.multiview == "sibling-bank":
+        def score_records(records, load_masks):
+            return _score_records_by_sample_cp(
+                _score_sample, records, cfg, load_masks)
+    else:
+        def score_records(records, load_masks):
+            return _score_records_standard_cp(
+                _score, records, cfg, load_masks)
+
     eval_rows = []
     class_mean_ap = float("nan")
     if not cfg.skip_eval and train_anom:
-        sub(f"local validation (tta={cfg.tta}, scorer={cfg.scorer})")
-        ds_v = InferenceDataset(train_anom, input_size=cfg.input_size, load_masks=True)
-        loader_v = DataLoader(ds_v, batch_size=cfg.score_batch_size, shuffle=False,
-                               num_workers=cfg.num_workers, pin_memory=True,
-                               persistent_workers=(cfg.num_workers > 0))
-        scores_by_idx = {}; gt_by_idx = {}
-        with torch.inference_mode():
-            for x, masks, idxs in loader_v:
-                sm = _score(x, cfg.tta).numpy()
-                m_np = masks.numpy()
-                for b in range(sm.shape[0]):
-                    s = gaussian_smooth(sm[b], cfg.smooth_sigma)
-                    scores_by_idx[int(idxs[b])] = s
-                    gt_by_idx[int(idxs[b])] = m_np[b]
+        sub(f"local validation (tta={cfg.tta}, scorer={cfg.scorer}, "
+            f"multiview={cfg.multiview}"
+            + (f", alpha={cfg.mv_alpha}" if cfg.multiview != "none" else "")
+            + ")")
+        scores_raw, gts = score_records(train_anom, load_masks=True)
+        scores_by_idx: dict[int, np.ndarray] = {}
+        gt_by_idx: dict[int, np.ndarray] = {}
+        for r_idx, sm_raw in scores_raw.items():
+            scores_by_idx[r_idx] = gaussian_smooth(sm_raw, cfg.smooth_sigma)
+            gt_by_idx[r_idx] = gts[r_idx]
         by_anom = defaultdict(list)
         for ridx, s in scores_by_idx.items():
             r = train_anom[ridx]
             ap = pixel_average_precision(s, gt_by_idx[ridx])
             by_anom[r.anomaly_type or "?"].append(ap)
-            # Stacker hook: record the raw per-pixel score map + GT mask
-            # for this (class, anomaly_type, view). Same data that goes
-            # into pixel_average_precision above, so the stacker sees
-            # exactly what we used for local validation.
             if local_saver is not None:
                 local_saver.add(
                     cls=cls,
@@ -999,23 +1183,15 @@ def run_one_class(cls: str, records_all, cfg: RunConfig, run_dir: Path,
 
     test_results = []
     if not cfg.skip_submission and test:
-        sub(f"scoring {len(test)} test images")
-        ds_t = InferenceDataset(test, input_size=cfg.input_size, load_masks=False)
-        loader_t = DataLoader(ds_t, batch_size=cfg.score_batch_size, shuffle=False,
-                               num_workers=cfg.num_workers, pin_memory=True,
-                               persistent_workers=(cfg.num_workers > 0))
-        n_done = 0; last_log = 0
-        with torch.inference_mode():
-            for x, _, idxs in loader_t:
-                sm = _score(x, cfg.tta).numpy()
-                for b in range(sm.shape[0]):
-                    s = gaussian_smooth(sm[b], cfg.smooth_sigma)
-                    s = maybe_resize_to_submission(s)
-                    test_results.append((test[int(idxs[b])], s))
-                n_done += sm.shape[0]
-                if n_done - last_log >= 200:
-                    last_log = n_done
-                    print(f"      scored {n_done}/{len(test)}", flush=True)
+        sub(f"scoring {len(test)} test images "
+            f"(multiview={cfg.multiview}"
+            + (f", alpha={cfg.mv_alpha}" if cfg.multiview != "none" else "")
+            + ")")
+        scores_raw, _ = score_records(test, load_masks=False)
+        for r_idx, sm_raw in scores_raw.items():
+            sm = gaussian_smooth(sm_raw, cfg.smooth_sigma)
+            sm = maybe_resize_to_submission(sm)
+            test_results.append((test[r_idx], sm))
 
     elapsed_min = (time.time() - t_start) / 60.0
     print(f"  class {cls} done in {elapsed_min:.1f} min")
@@ -1072,13 +1248,7 @@ def main():
     ap.add_argument("--target-layer", type=int, default=2)
     # Scorer
     ap.add_argument("--scorer", default="patchcore",
-                    choices=["patchcore", "padim"],
-                    help="patchcore: PatchCore-style NN scoring over the "
-                         "CutPaste-trained features (recommended for "
-                         "multi-view datasets like Spacepresso). "
-                         "padim: per-position Gaussian + Mahalanobis "
-                         "(legacy; underperforms when objects aren't "
-                         "position-aligned across train images).")
+                    choices=["patchcore", "padim"])
     # Training
     ap.add_argument("--epochs", type=int, default=256)
     ap.add_argument("--total-iters", type=int, default=None,
@@ -1116,6 +1286,18 @@ def main():
     ap.add_argument("--smooth-sigma", type=float, default=1.5)
     ap.add_argument("--tta", default="hvflip",
                     choices=["none", "hflip", "vflip", "hvflip", "d4"])
+    # Multiview (PatchCore scorer only)
+    ap.add_argument("--multiview", default="none",
+                    choices=["none", "sibling-bank"],
+                    help="`sibling-bank`: at scoring time, batch all views "
+                         "of a sample and use the OTHER views' patch "
+                         "features as a per-sample memory bank that boosts "
+                         "view-inconsistent pixels. Requires "
+                         "--scorer patchcore.")
+    ap.add_argument("--mv-alpha", type=float, default=0.5,
+                    help="Multi-view blend weight in [0, 1]. 0 disables "
+                         "the boost; 1 fully replaces the standard score "
+                         "with the inconsistency signal.")
     # Bookkeeping
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--only-classes", nargs="*", default=[])
@@ -1140,6 +1322,14 @@ def main():
         raise SystemExit(
             f"[FATAL] --target-layer {args.target_layer} must be in "
             f"--feature-layers {list(feature_layers)}.")
+
+    if not (0.0 <= args.mv_alpha <= 1.0):
+        raise SystemExit(f"[FATAL] --mv-alpha must be in [0, 1]; "
+                          f"got {args.mv_alpha}")
+    if args.multiview != "none" and args.scorer != "patchcore":
+        raise SystemExit(
+            f"[FATAL] --multiview {args.multiview} requires "
+            f"--scorer patchcore; got --scorer {args.scorer}.")
 
     cfg = RunConfig(
         data_root=args.data_root, report_dir=args.report_dir,
@@ -1169,6 +1359,7 @@ def main():
         fit_batch_size=args.fit_batch_size,
         score_batch_size=args.score_batch_size,
         smooth_sigma=args.smooth_sigma, tta=args.tta,
+        multiview=args.multiview, mv_alpha=args.mv_alpha,
         seed=args.seed, only_classes=args.only_classes,
         skip_eval=args.skip_eval, skip_submission=args.skip_submission,
         save_checkpoints=args.save_checkpoints,
@@ -1187,7 +1378,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     with tee_to(run_dir / "run_log.txt"):
-        hr(f"CUTPASTE v3 ({cfg.scorer}) — RUN {run_id}", "█")
+        hr(f"CUTPASTE v4 ({cfg.scorer}+multiview) — RUN {run_id}", "█")
         print(f"  data_root        : {cfg.data_root}")
         print(f"  run_dir          : {run_dir}")
         print(f"  scorer           : {cfg.scorer}")
@@ -1217,6 +1408,7 @@ def main():
         print(f"  score_batch_size : {cfg.score_batch_size}")
         print(f"  smooth_sigma     : {cfg.smooth_sigma}")
         print(f"  tta              : {cfg.tta}")
+        print(f"  multiview        : {cfg.multiview}  alpha={cfg.mv_alpha}")
         print(f"  save_local_preds : {not args.no_save_local_preds}")
         print(f"  device           : {device}")
         if torch.cuda.is_available():
@@ -1237,8 +1429,6 @@ def main():
             classes = [c for c in classes if c in set(cfg.only_classes)]
         print(f"\n  running on {len(classes)} class(es): {', '.join(classes)}")
 
-        # Stacker hook: one saver across all classes; written once at the
-        # end of the run. Disabled if --skip-eval (no GT to save).
         local_saver: LocalPredSaver | None = None
         if not cfg.skip_eval and not args.no_save_local_preds:
             local_saver = LocalPredSaver()
@@ -1255,8 +1445,6 @@ def main():
             class_aps[cls] = res["class_mean_ap"]
             class_elapsed[cls] = res["elapsed_min"]
 
-        # Persist the accumulated local predictions ONCE (single npz
-        # for the whole run). The stacker reads this file directly.
         if local_saver is not None and len(local_saver) > 0:
             local_saver.save(run_dir / "local_predictions.npz")
 
@@ -1284,6 +1472,9 @@ def main():
             print(f"\n  Upload: {run_dir / 'submission.zip'}")
 
         master_csv = cfg.report_dir / "ablation_master.csv"
+        mv_notes = ""
+        if cfg.multiview != "none":
+            mv_notes = f" multiview={cfg.multiview} mv_alpha={cfg.mv_alpha}"
         row = {
             "run_id": run_id,
             "run_tag": cfg.run_tag,
@@ -1304,9 +1495,9 @@ def main():
             "runtime_min": f"{(time.time() - t_total) / 60:.1f}",
             "submission_path": str(run_dir / "submission.zip")
                                 if not cfg.skip_submission else "",
-            "notes": (f"cutpaste v3 scorer={cfg.scorer} "
+            "notes": (f"cutpaste v4 scorer={cfg.scorer} "
                       f"{'it' + str(cfg.total_iters) if cfg.total_iters else 'e' + str(cfg.epochs)} "
-                      f"bs{cfg.batch_size}"),
+                      f"bs{cfg.batch_size}{mv_notes}"),
         }
         append_to_ablation_master(master_csv, row)
         print(f"\n  ablation row appended -> {master_csv}")

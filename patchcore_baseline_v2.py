@@ -1,61 +1,52 @@
-"""Spacepresso baseline v5 — adds DINOv2 ViT-S/14 backbone.
+"""Spacepresso baseline v6 — adds sibling-bank multiview inference.
 
-Drop-in successor to v4. All v4 efficiency tricks are preserved unchanged:
+Drop-in successor to v5. All v5 efficiency tricks are preserved unchanged:
 
   - CPU-resident feature tensor, 32-d random projection on GPU for coreset
   - Mini-batch greedy k-center (sync-free, ~50-100x faster than naive)
   - fp16 memory bank + chunked NN scoring (score_chunk × memory_chunk)
   - TTA-aware scoring with average over flips
   - Per-(class, anomaly_type) local-AP harness
+  - DINOv2 ViT-S/14 / -B/14 / -L/14 backbones via torch.hub
 
-What v5 adds (entirely additive — no behaviour change for ResNet runs):
+What v6 adds (entirely additive — non-multiview behaviour is unchanged):
 
-  (1) `--backbone dinov2_vits14` (also `dinov2_vitb14`, `dinov2_vitl14`).
-      Loaded via torch.hub from facebookresearch/dinov2. Cached under
-      $TORCH_HOME/hub.
+  --multiview {none, sibling-bank}   (default: none)
+  --mv-alpha FLOAT                   (default: 0.5)
 
-  (2) DINOv2 forward path uses `get_intermediate_layers(..., reshape=True,
-      norm=True)` to return one (B, D, H, W) feature map per requested
-      transformer block. Patchify (3x3 AvgPool) + multi-layer
-      concatenation pipeline is unchanged — for ViT all "layers" already
-      share the same spatial grid so the interpolation step in
-      `patchify_and_combine` is a no-op.
+  When `--multiview sibling-bank` is on, all views of a sample (grouped by
+  `sample_id`) are scored together. For each view V_i:
+    1. Standard PatchCore score (1 - max cos sim to memory bank).
+    2. Sibling bank: patch features of the OTHER (V - 1) views, concatenated.
+    3. View-inconsistency map: 1 - max cos sim between view V_i's patch
+       features and the sibling bank.
+    4. Min-max normalise the inconsistency map across the sample.
+    5. Boost: final = standard * ((1 - alpha) + alpha * mv_inc_norm)
 
-  (3) Input-size validation: DINOv2 requires input H, W divisible by the
-      14-px patch size. Use 392 (28x28 tokens, "exp5 equivalent") or 518
-      (37x37, DINOv2's native pretraining resolution).
+  Rationale (same as EfficientAD's sibling-bank): a real defect appears in
+  1-2 views, so its features differ from any patch of the other 4 views ->
+  high mv_inc -> boost preserved. Spurious bright regions (lighting, complex
+  but consistent texture) recur across views -> low mv_inc -> down-weighted.
 
-  (4) `--feature-layers` for DINOv2 means transformer block indices
-      (0..n_blocks-1). A reasonable default for ViT-S/14 (12 blocks) is
-      `--feature-layers 3 6 9 11`. ResNet runs are unaffected (default
-      remains 2 3).
+  alpha=0 makes multiview a no-op (boost is identically 1.0). alpha=1.0
+  replaces the standard score with the inconsistency signal. Default 0.5
+  is a balanced blend.
 
-Memory budget on a 24 GB L4 with DINOv2 ViT-S/14 + input 518 +
-4 layers + coreset 5% + score-batch 8:
+# Memory budget on a 24 GB L4
 
-  - Feature extraction:  ~1 GB GPU peak
-  - Coreset projection: ~200-400 MB GPU (the 32-d projected feats)
-  - Memory bank (fp16):  ~30 MB per class
-  - Scoring matmul:     score_chunk × memory_chunk × 2 B = ~130 MB
+  Multiview adds ONE extra patch-feature tensor per TTA pass that has to
+  stay on GPU until the sibling matmul runs. For DINOv2 ViT-S/14 @ 518
+  with 4 layers fused, V=5, hvflip TTA:
+    pf shape  = (5, 37*37, 4*384) = (5, 1369, 1536)
+    bytes     = 5 * 1369 * 1536 * 4 = 42 MB per pass
+    + score   = 5 * 37 * 37 = 27 KB per pass
+    + accum   = ~84 MB for 2 in-flight passes
+  Easily fits.
 
-Pre-flight (run once on a node with internet, e.g. login node):
+# v6 + stacker hook (unchanged)
 
-      python -c "import torch; \
-          torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14', \
-                          trust_repo=True)"
-
-This caches the ~88 MB checkpoint under ~/.cache/torch/hub/checkpoints
-so compute nodes can read it offline.
-
-# v5 + stacker hook (additive)
-
-This file also writes a `local_predictions.npz` per run for downstream
-stacker training (logreg_stacker.py / xgboost_stacker.py). The hook is
-non-invasive: a `LocalPredSaver` instance is threaded through
-`run_one_class`, populated alongside the existing pixel-AP computation,
-and dumped once at the end of `main()`. Behaviour of every existing
-output (submission.csv, local_eval.csv, ablation_master.csv) is
-unchanged.
+This file writes a `local_predictions.npz` per run for downstream stacker
+training (see local_preds_saver.py). The hook is non-invasive.
 """
 from __future__ import annotations
 
@@ -103,8 +94,7 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD  = (0.229, 0.224, 0.225)
 VIEW_RE = re.compile(r"^(?P<base>.+?)_view(?P<v>\d+)\.[A-Za-z]+$")
 
-# Channel/dim per layer-or-block, by backbone. For DINOv2 every block has
-# the same embed_dim so the dict is a constant fill.
+# Channel/dim per layer-or-block, by backbone.
 RESNET_CHANNELS = {
     "wide_resnet50_2": {1: 256, 2: 512, 3: 1024, 4: 2048},
     "resnet50":        {1: 256, 2: 512, 3: 1024, 4: 2048},
@@ -166,7 +156,7 @@ def now_hms(): return time.strftime("%H:%M:%S")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Dataset (unchanged from v4)
+# Dataset
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class ImageRecord:
@@ -276,22 +266,10 @@ def make_loader(records, batch_size, input_size,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Feature extractor — v5 dual ResNet / DINOv2
+# Feature extractor — dual ResNet / DINOv2
 # ─────────────────────────────────────────────────────────────────────────────
 class FeatureExtractor(nn.Module):
-    """Dual-backbone feature extractor.
-
-    For ResNet backbones, returns a dict {layer_idx: (B, C, H, W)} for
-    each requested ResNet stage in {1, 2, 3, 4}.
-
-    For DINOv2 backbones, returns a dict {block_idx: (B, D, H, W)} for
-    each requested transformer block (0..n_blocks-1). All blocks share
-    the same spatial grid (H = W = input_size / 14) and same channel
-    dim (= embed_dim).
-
-    The downstream `patchify_and_combine` is agnostic to the source —
-    the shapes carry all the information it needs.
-    """
+    """Dual-backbone feature extractor; see module docstring for details."""
 
     def __init__(self, backbone: str = "wide_resnet50_2"):
         super().__init__()
@@ -316,8 +294,6 @@ class FeatureExtractor(nn.Module):
             self.n_blocks = None
         elif backbone in DINOV2_BACKBONES:
             self.kind = "dinov2"
-            # `trust_repo=True` avoids the interactive prompt; the model is
-            # downloaded once and cached at $TORCH_HOME/hub.
             self.dinov2 = torch.hub.load(
                 "facebookresearch/dinov2", backbone,
                 trust_repo=True, source="github",
@@ -340,8 +316,7 @@ class FeatureExtractor(nn.Module):
             return self._forward_resnet(x, layers)
         return self._forward_dinov2(x, layers)
 
-    def _forward_resnet(self, x: torch.Tensor,
-                        layers: tuple[int, ...]) -> dict[int, torch.Tensor]:
+    def _forward_resnet(self, x, layers):
         out: dict[int, torch.Tensor] = {}
         need_4 = 4 in layers
         x = self.stem(x)
@@ -356,8 +331,7 @@ class FeatureExtractor(nn.Module):
             out[4] = x
         return out
 
-    def _forward_dinov2(self, x: torch.Tensor,
-                         layers: tuple[int, ...]) -> dict[int, torch.Tensor]:
+    def _forward_dinov2(self, x, layers):
         B, _, H, W = x.shape
         if H % self.patch_size != 0 or W % self.patch_size != 0:
             raise ValueError(
@@ -368,8 +342,6 @@ class FeatureExtractor(nn.Module):
                 raise ValueError(
                     f"DINOv2 block index {l} out of range "
                     f"[0, {self.n_blocks - 1}] for {self.backbone_name}.")
-        # Returns a tuple of (B, D, H/14, W/14) feature maps, one per
-        # requested block index, with final LayerNorm applied.
         outs = self.dinov2.get_intermediate_layers(
             x, n=list(layers), reshape=True, norm=True,
         )
@@ -379,12 +351,7 @@ class FeatureExtractor(nn.Module):
 def patchify_and_combine(maps: dict[int, torch.Tensor],
                           patch_size: int = 3,
                           target_layer: int = 2) -> torch.Tensor:
-    """Local 3x3 aggregation + multi-layer concatenation + L2-normalise.
-
-    For ResNet the requested layers have different spatial sizes — they
-    get bilinearly upsampled to the spatial grid of `target_layer`.
-    For DINOv2 all blocks share the same grid so the interpolation step
-    is a no-op (same shape in, same shape out)."""
+    """Local 3x3 aggregation + multi-layer concatenation + L2-normalise."""
     assert target_layer in maps, \
         f"target_layer={target_layer} not in {list(maps)}"
     H, W = maps[target_layer].shape[-2:]
@@ -404,19 +371,15 @@ def patchify_and_combine(maps: dict[int, torch.Tensor],
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Greedy k-center coreset (unchanged from v4)
+# Greedy k-center coreset
 # ─────────────────────────────────────────────────────────────────────────────
 @torch.inference_mode()
-def _project_cpu_features_to_gpu(features_cpu: torch.Tensor,
-                                  device: torch.device,
-                                  seed: int,
-                                  projection_dim: int,
-                                  project_chunk: int) -> torch.Tensor:
+def _project_cpu_features_to_gpu(features_cpu, device, seed,
+                                  projection_dim, project_chunk):
     N, D = features_cpu.shape
     if projection_dim >= D:
         raise ValueError(
-            f"projection_dim={projection_dim} must be < D={D} for the "
-            f"CPU-features path.")
+            f"projection_dim={projection_dim} must be < D={D}.")
     g = torch.Generator(device=device).manual_seed(seed)
     P = torch.randn(D, projection_dim, generator=g, device=device,
                     dtype=torch.float32) / math.sqrt(projection_dim)
@@ -446,14 +409,12 @@ def _project_cpu_features_to_gpu(features_cpu: torch.Tensor,
 
 
 @torch.inference_mode()
-def _kcenter_exact_gpu(feats_proj: torch.Tensor,
-                        n_select: int, seed: int) -> torch.Tensor:
+def _kcenter_exact_gpu(feats_proj, n_select, seed):
     device = feats_proj.device
     N = feats_proj.shape[0]
     n_select = min(n_select, N)
     rng = torch.Generator(device=device).manual_seed(seed + 1)
-    first_t = torch.randint(0, N, (1,), generator=rng, device=device)
-    first = int(first_t.item())
+    first = int(torch.randint(0, N, (1,), generator=rng, device=device).item())
     selected = torch.empty(n_select, dtype=torch.long, device=device)
     selected[0] = first
     first_pt = feats_proj[first:first + 1]
@@ -478,9 +439,7 @@ def _kcenter_exact_gpu(feats_proj: torch.Tensor,
 
 
 @torch.inference_mode()
-def _kcenter_minibatch_gpu(feats_proj: torch.Tensor,
-                            n_select: int, seed: int,
-                            batch_size: int) -> torch.Tensor:
+def _kcenter_minibatch_gpu(feats_proj, n_select, seed, batch_size):
     device = feats_proj.device
     N = feats_proj.shape[0]
     n_select = min(n_select, N)
@@ -525,16 +484,11 @@ def _kcenter_minibatch_gpu(feats_proj: torch.Tensor,
 
 
 @torch.inference_mode()
-def greedy_coreset(features_cpu: torch.Tensor,
-                    n_select: int,
-                    device: torch.device,
-                    seed: int = 0,
-                    projection_dim: int = 32,
-                    project_chunk: int = 65536,
-                    algo: str = "minibatch",
-                    batch_size: int = 64) -> torch.Tensor:
+def greedy_coreset(features_cpu, n_select, device,
+                    seed=0, projection_dim=32, project_chunk=65536,
+                    algo="minibatch", batch_size=64):
     assert features_cpu.device.type == "cpu", (
-        f"v5 expects CPU features; got {features_cpu.device}.")
+        f"expects CPU features; got {features_cpu.device}.")
     if algo not in ("exact", "minibatch"):
         raise ValueError(f"coreset_algo must be 'exact' or 'minibatch', "
                          f"got {algo!r}")
@@ -556,12 +510,7 @@ def greedy_coreset(features_cpu: torch.Tensor,
 # ─────────────────────────────────────────────────────────────────────────────
 # Target-layer auto-resolution
 # ─────────────────────────────────────────────────────────────────────────────
-def resolve_target_layer(feature_layers: tuple[int, ...],
-                          explicit: str | int | None,
-                          backbone: str) -> int:
-    """For ResNet, prefer layer 2 (highest spatial res among 1-3).
-    For DINOv2, all layers share the same spatial res, so pick the
-    smallest requested block (least costly tie-breaker)."""
+def resolve_target_layer(feature_layers, explicit, backbone):
     if explicit is None or (isinstance(explicit, str) and explicit == "auto"):
         if backbone in RESNET_BACKBONES and 2 in feature_layers:
             return 2
@@ -576,8 +525,7 @@ def resolve_target_layer(feature_layers: tuple[int, ...],
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PatchCore — unchanged from v4 in behaviour. Only `_extract` calls
-# `self.extractor` which now dispatches by backbone kind.
+# PatchCore
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class PatchCoreConfig:
@@ -663,19 +611,15 @@ class PatchCore:
 
         if self.cfg.coreset_fp16:
             all_feats = all_feats.half()
-            print(f"    -> {all_feats.shape[0]} patch features "
-                  f"(fp16, CPU; "
-                  f"{all_feats.element_size() * all_feats.numel() / 1e9:.2f} "
-                  f"GB)")
+            print(f"    -> {all_feats.shape[0]} patch features (fp16, CPU; "
+                  f"{all_feats.element_size() * all_feats.numel() / 1e9:.2f} GB)")
         else:
-            print(f"    -> {all_feats.shape[0]} patch features "
-                  f"(fp32, CPU; "
-                  f"{all_feats.element_size() * all_feats.numel() / 1e9:.2f} "
-                  f"GB)")
+            print(f"    -> {all_feats.shape[0]} patch features (fp32, CPU; "
+                  f"{all_feats.element_size() * all_feats.numel() / 1e9:.2f} GB)")
 
         n_select = max(int(self.cfg.coreset_frac * all_feats.shape[0]), 1)
         if self.cfg.coreset_algo == "minibatch":
-            algo_desc = (f"minibatch (batch_size={self.cfg.coreset_batch})")
+            algo_desc = f"minibatch (batch_size={self.cfg.coreset_batch})"
         else:
             algo_desc = "exact (sync-free)"
         print(f"    [{now_hms()}] greedy coreset [{algo_desc}]: "
@@ -706,44 +650,16 @@ class PatchCore:
               f"({self.memory.element_size() * self.memory.numel() / 1e6:.1f} "
               f"MB on GPU)")
 
+    # ── Standard single-image scoring (unchanged from v5) ───────────────────
     @torch.inference_mode()
     def _score_one_pass(self, x: torch.Tensor) -> torch.Tensor:
-        assert self.memory is not None, "fit() first"
-        maps = self.extractor(x.to(self.device, non_blocking=True),
-                              layers=self.cfg.feature_layers)
-        pf = patchify_and_combine(maps,
-                                   patch_size=self.cfg.patch_size,
-                                   target_layer=self.target_layer)
-        del maps
-        B, P, C = pf.shape
-        H = W = int(math.isqrt(P))
-        flat = pf.reshape(-1, C)
-        N_q = flat.shape[0]
-        score_chunk = self.cfg.score_chunk
-        memory_chunk = self.cfg.memory_chunk
-        M_total = self.memory.shape[0]
-        dist_min = torch.empty(N_q, device=self.device, dtype=torch.float32)
-        for s in range(0, N_q, score_chunk):
-            e = min(N_q, s + score_chunk)
-            q = flat[s:e].to(self.memory_dtype)
-            max_sim = torch.full((q.shape[0],), -2.0, device=self.device,
-                                  dtype=self.memory_dtype)
-            for ms in range(0, M_total, memory_chunk):
-                me = min(M_total, ms + memory_chunk)
-                m_chunk = self.memory[ms:me]
-                sim = q @ m_chunk.T
-                chunk_max = sim.max(dim=1).values
-                torch.maximum(max_sim, chunk_max, out=max_sim)
-                del sim, chunk_max
-            dist_min[s:e] = (1.0 - max_sim.float())
-            del q, max_sim
-        del flat, pf
-        score_lr = dist_min.reshape(B, H, W)
+        """Returns the upsampled (B, input_size, input_size) score on CPU."""
+        score_lr, _ = self._compute_score_and_pf(x)
         score = F.interpolate(score_lr.unsqueeze(1),
                               size=(self.cfg.input_size, self.cfg.input_size),
                               mode="bilinear", align_corners=False)
         out = score.squeeze(1).cpu()
-        del dist_min, score_lr, score
+        del score_lr, score
         return out
 
     @torch.inference_mode()
@@ -785,6 +701,147 @@ class PatchCore:
             _add(s)
         return accumulator / max(n, 1)
 
+    # ── Multiview-aware scoring (v6) ────────────────────────────────────────
+    @torch.inference_mode()
+    def _compute_score_and_pf(self, x: torch.Tensor):
+        """Shared inner: returns (score_lr (B, H, W) on GPU,
+        pf (B, P, C) L2-normed on GPU). Used by both the standard
+        single-image path and the multiview path."""
+        assert self.memory is not None, "fit() first"
+        maps = self.extractor(x.to(self.device, non_blocking=True),
+                              layers=self.cfg.feature_layers)
+        pf = patchify_and_combine(maps,
+                                   patch_size=self.cfg.patch_size,
+                                   target_layer=self.target_layer)
+        del maps
+        B, P, C = pf.shape
+        H = W = int(math.isqrt(P))
+        flat = pf.reshape(-1, C)
+        N_q = flat.shape[0]
+        M_total = self.memory.shape[0]
+        dist_min = torch.empty(N_q, device=self.device, dtype=torch.float32)
+        for s in range(0, N_q, self.cfg.score_chunk):
+            e = min(N_q, s + self.cfg.score_chunk)
+            q = flat[s:e].to(self.memory_dtype)
+            max_sim = torch.full((q.shape[0],), -2.0, device=self.device,
+                                  dtype=self.memory_dtype)
+            for ms in range(0, M_total, self.cfg.memory_chunk):
+                me = min(M_total, ms + self.cfg.memory_chunk)
+                m_chunk = self.memory[ms:me]
+                sim = q @ m_chunk.T
+                chunk_max = sim.max(dim=1).values
+                torch.maximum(max_sim, chunk_max, out=max_sim)
+                del sim, chunk_max
+            dist_min[s:e] = (1.0 - max_sim.float())
+            del q, max_sim
+        score_lr = dist_min.reshape(B, H, W)
+        del flat, dist_min
+        # pf is already L2-normed by patchify_and_combine.
+        return score_lr, pf
+
+    @torch.inference_mode()
+    def score_sample_with_siblings(self, x_sample: torch.Tensor,
+                                     tta: str = "none",
+                                     mv_alpha: float = 0.5) -> torch.Tensor:
+        """All views of one sample batched together.
+
+        x_sample: (V, 3, H, W). Returns (V, input_size, input_size) on CPU.
+
+        For each view V_i:
+          - standard score    = 1 - max cos sim to memory bank
+          - sibling-bank      = patch features of the OTHER (V-1) views
+          - mv_inconsistency  = 1 - max cos sim to sibling bank
+          - boost             = (1 - alpha) + alpha * minmax(mv_inconsistency)
+          - final             = standard * boost   (then upsample)
+        TTA is applied to BOTH the score and the patch features and
+        averaged before sibling computation (spatial transforms inverted
+        first to align)."""
+        device = self.device
+        x_sample = x_sample.to(device, non_blocking=True)
+
+        acc_score = None
+        acc_pf = None
+        n_acc = 0
+
+        def _add(s, pf):
+            nonlocal acc_score, acc_pf, n_acc
+            if acc_score is None:
+                acc_score = s.clone()
+                acc_pf = pf.clone()
+            else:
+                acc_score += s
+                acc_pf += pf
+            n_acc += 1
+
+        # Identity pass
+        s, pf = self._compute_score_and_pf(x_sample)
+        _add(s, pf)
+
+        def _invert_pf_flip(pf2, flip_dim_in_grid):
+            """flip_dim_in_grid: -2 for W (hflip undo), -3 for H (vflip undo)."""
+            Bf, Pf, Cf = pf2.shape
+            Hf = Wf = int(math.isqrt(Pf))
+            return torch.flip(pf2.reshape(Bf, Hf, Wf, Cf),
+                              dims=[flip_dim_in_grid]).reshape(Bf, Pf, Cf)
+
+        def _invert_pf_rot(pf2, k):
+            Bf, Pf, Cf = pf2.shape
+            Hf = Wf = int(math.isqrt(Pf))
+            return torch.rot90(pf2.reshape(Bf, Hf, Wf, Cf),
+                                k=-k, dims=[-3, -2]).reshape(Bf, Pf, Cf)
+
+        if tta in ("hflip", "hvflip", "d4"):
+            s2, pf2 = self._compute_score_and_pf(torch.flip(x_sample, dims=[-1]))
+            _add(torch.flip(s2, dims=[-1]), _invert_pf_flip(pf2, -2))
+        if tta in ("vflip", "hvflip", "d4"):
+            s2, pf2 = self._compute_score_and_pf(torch.flip(x_sample, dims=[-2]))
+            _add(torch.flip(s2, dims=[-2]), _invert_pf_flip(pf2, -3))
+        if tta == "d4":
+            for k in (1, 2, 3):
+                s2, pf2 = self._compute_score_and_pf(
+                    torch.rot90(x_sample, k=k, dims=[-2, -1]))
+                _add(torch.rot90(s2, k=-k, dims=[-2, -1]),
+                     _invert_pf_rot(pf2, k))
+
+        score_lr = acc_score / n_acc
+        pf = acc_pf / n_acc
+        # Re-normalise after averaging (each individual pf was L2-normed).
+        pf = F.normalize(pf, p=2, dim=-1)
+
+        V, P, C = pf.shape
+        H = W = int(math.isqrt(P))
+
+        if V < 2:
+            up = F.interpolate(score_lr.unsqueeze(1),
+                               size=(self.cfg.input_size, self.cfg.input_size),
+                               mode="bilinear", align_corners=False).squeeze(1)
+            return up.cpu()
+
+        # Per-view inconsistency vs sibling bank.
+        mv_dist = torch.empty(V, P, device=device, dtype=torch.float32)
+        for i in range(V):
+            siblings = torch.cat([pf[j] for j in range(V) if j != i], dim=0)
+            sim = pf[i].float() @ siblings.float().T   # (P, (V-1)*P)
+            max_sim = sim.max(dim=1).values
+            mv_dist[i] = 1.0 - max_sim
+            del siblings, sim, max_sim
+
+        mv_dist = mv_dist.reshape(V, H, W)
+        sd_min = mv_dist.min(); sd_max = mv_dist.max()
+        if (sd_max - sd_min) > 1e-9:
+            mv_norm = (mv_dist - sd_min) / (sd_max - sd_min)
+        else:
+            mv_norm = torch.zeros_like(mv_dist)
+
+        boost = (1.0 - mv_alpha) + mv_alpha * mv_norm
+        boosted = score_lr * boost
+        up = F.interpolate(boosted.unsqueeze(1),
+                           size=(self.cfg.input_size, self.cfg.input_size),
+                           mode="bilinear", align_corners=False).squeeze(1)
+        out = up.cpu()
+        del pf, mv_dist, mv_norm, boost, boosted, score_lr, up
+        return out
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Pixel-level Average Precision
@@ -809,15 +866,15 @@ def pixel_average_precision(score: np.ndarray, gt: np.ndarray) -> float:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Smoothing + calibration + q8rle (unchanged)
+# Smoothing + calibration + q8rle
 # ─────────────────────────────────────────────────────────────────────────────
-def _gaussian_kernel_1d(sigma: float, radius: int) -> np.ndarray:
+def _gaussian_kernel_1d(sigma, radius):
     x = np.arange(-radius, radius + 1)
     k = np.exp(-(x ** 2) / (2 * sigma ** 2))
     return (k / k.sum()).astype(np.float32)
 
 
-def gaussian_smooth(score: np.ndarray, sigma: float = 1.5) -> np.ndarray:
+def gaussian_smooth(score, sigma=1.5):
     if sigma <= 0:
         return score
     r = max(1, int(round(3 * sigma)))
@@ -829,7 +886,7 @@ def gaussian_smooth(score: np.ndarray, sigma: float = 1.5) -> np.ndarray:
     return sx
 
 
-def calibrate_to_unit(scores: list[np.ndarray]) -> tuple[float, float]:
+def calibrate_to_unit(scores):
     flat = np.concatenate([s.ravel() for s in scores])
     lo = float(np.percentile(flat, 1.0))
     hi = float(np.percentile(flat, 99.5))
@@ -837,7 +894,7 @@ def calibrate_to_unit(scores: list[np.ndarray]) -> tuple[float, float]:
     return lo, hi
 
 
-def float_matrix_to_q8rle(x: np.ndarray) -> str:
+def float_matrix_to_q8rle(x):
     q = np.clip(np.rint(np.asarray(x, dtype=np.float32) * 255),
                 0, 255).astype(np.uint8)
     h, w = q.shape
@@ -856,7 +913,7 @@ def float_matrix_to_q8rle(x: np.ndarray) -> str:
 SUBMISSION_H = SUBMISSION_W = 224
 
 
-def maybe_resize_to_submission(score: np.ndarray) -> np.ndarray:
+def maybe_resize_to_submission(score):
     if score.shape == (SUBMISSION_H, SUBMISSION_W):
         return score
     t = torch.from_numpy(score).unsqueeze(0).unsqueeze(0).float()
@@ -890,6 +947,10 @@ class RunConfig:
     smooth_sigma: float = 1.5
     knn_k: int = 9
     tta: str = "none"
+    # v6: multiview
+    multiview: str = "none"          # "none" | "sibling-bank"
+    mv_alpha: float = 0.5
+    # bookkeeping
     seed: int = 0
     only_classes: list[str] = field(default_factory=list)
     skip_eval: bool = False
@@ -918,14 +979,14 @@ def make_run_id(cfg: RunConfig) -> str:
         "score_chunk": cfg.score_chunk,
         "memory_chunk": cfg.memory_chunk,
         "project_chunk": cfg.project_chunk,
+        "multiview": cfg.multiview,
+        "mv_alpha": cfg.mv_alpha if cfg.multiview != "none" else 0,
         "seed": cfg.seed,
-        "v": 5,
+        "v": 6,
     }, sort_keys=True).encode("utf-8")
     digest = hashlib.sha1(fp).hexdigest()[:6]
     stamp = time.strftime("%Y%m%d-%H%M%S")
     bb = BACKBONE_SHORT[cfg.backbone]
-    # Use "_" separator for DINOv2 (block indices can be 2-digit); keep
-    # the compact concatenated form for ResNet to preserve old run_ids.
     if cfg.backbone in RESNET_BACKBONES:
         L = "".join(str(l) for l in cfg.feature_layers)
     else:
@@ -940,6 +1001,8 @@ def make_run_id(cfg: RunConfig) -> str:
         bits += f"_{cfg.memory_dtype}"
     if cfg.tta != "none":
         bits += f"_tta-{cfg.tta}"
+    if cfg.multiview != "none":
+        bits += f"_mv-a{cfg.mv_alpha:.2f}"
     if cfg.run_tag:
         bits += f"_{re.sub(r'[^A-Za-z0-9._-]+', '-', cfg.run_tag)}"
     return f"{bits}_{digest}"
@@ -963,6 +1026,95 @@ def append_to_ablation_master(master_csv: Path, row: dict) -> None:
         w.writeheader()
         for r in existing_rows:
             w.writerow({k: r.get(k, "") for k in fieldnames})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Scoring helpers — standard vs sample-grouped
+# ─────────────────────────────────────────────────────────────────────────────
+def _build_transform_pc(input_size: int):
+    return transforms.Compose([
+        transforms.Resize((input_size, input_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+    ])
+
+
+def _load_one_pc(r: ImageRecord, transform, load_masks: bool,
+                  input_size: int):
+    with Image.open(r.path) as im:
+        x = transform(im.convert("RGB"))
+    if load_masks and r.mask_path is not None:
+        with Image.open(r.mask_path) as mm:
+            mm = mm.convert("L").resize(
+                (input_size, input_size), Image.NEAREST)
+            m = (np.asarray(mm) > 127).astype(np.float32)
+    else:
+        m = np.zeros((input_size, input_size), dtype=np.float32)
+    return x, m
+
+
+def _score_records_standard_pc(pc: PatchCore, records: list[ImageRecord],
+                                cfg: RunConfig, load_masks: bool
+                                ) -> tuple[dict, dict]:
+    """Vanilla per-image scoring (uses pc.score_batch with TTA).
+    Returns (idx -> raw_score_map, idx -> gt_mask)."""
+    loader = make_loader(records, batch_size=cfg.score_batch_size,
+                         input_size=cfg.input_size,
+                         num_workers=cfg.num_workers,
+                         load_masks=load_masks)
+    scores: dict[int, np.ndarray] = {}
+    gts: dict[int, np.ndarray] = {}
+    n_done = 0; last_log = 0
+    with torch.inference_mode():
+        for x, masks, idxs in loader:
+            sm = pc.score_batch(x, tta=cfg.tta).numpy()
+            m_np = masks.numpy()
+            for b in range(sm.shape[0]):
+                scores[int(idxs[b])] = sm[b]
+                gts[int(idxs[b])] = m_np[b]
+            n_done += sm.shape[0]
+            if n_done - last_log >= 200:
+                last_log = n_done
+                print(f"      scored {n_done}/{len(records)}", flush=True)
+            if cfg.aggressive_cleanup and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    return scores, gts
+
+
+def _score_records_by_sample_pc(pc: PatchCore, records: list[ImageRecord],
+                                 cfg: RunConfig, load_masks: bool
+                                 ) -> tuple[dict, dict]:
+    """Group by sample_id, score all views of each sample together using
+    pc.score_sample_with_siblings."""
+    by_sample: dict[str, list[tuple[int, ImageRecord]]] = defaultdict(list)
+    for idx, r in enumerate(records):
+        sid = r.sample_id or r.path.stem
+        by_sample[sid].append((idx, r))
+    print(f"      grouped {len(records)} images into {len(by_sample)} samples")
+
+    transform = _build_transform_pc(cfg.input_size)
+    scores: dict[int, np.ndarray] = {}
+    gts: dict[int, np.ndarray] = {}
+    n_done = 0; last_log = 0
+    for sid, items in by_sample.items():
+        imgs: list[torch.Tensor] = []
+        masks_np: list[np.ndarray] = []
+        for _idx, r in items:
+            x, m = _load_one_pc(r, transform, load_masks, cfg.input_size)
+            imgs.append(x); masks_np.append(m)
+        x_batch = torch.stack(imgs)
+        sm = pc.score_sample_with_siblings(
+            x_batch, tta=cfg.tta, mv_alpha=cfg.mv_alpha).numpy()
+        for k, (idx, _r) in enumerate(items):
+            scores[idx] = sm[k]
+            gts[idx] = masks_np[k]
+        n_done += len(items)
+        if n_done - last_log >= 200:
+            last_log = n_done
+            print(f"      scored {n_done}/{len(records)}", flush=True)
+        if cfg.aggressive_cleanup and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    return scores, gts
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1018,36 +1170,31 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
                     "config": asdict(pc_cfg)}, bank_path)
         print(f"    saved memory bank -> {bank_path}")
 
+    # Pick scoring function: vanilla or sample-grouped multiview.
+    score_fn = (_score_records_by_sample_pc
+                if cfg.multiview == "sibling-bank"
+                else _score_records_standard_pc)
+
     eval_rows: list[dict] = []
     class_mean_ap = float("nan")
     if not cfg.skip_eval and train_anom:
-        sub(f"local validation — per-anomaly-type pixel-AP "
-            f"(tta={cfg.tta}, score_bs={cfg.score_batch_size})")
-        loader = make_loader(train_anom, batch_size=cfg.score_batch_size,
-                             input_size=cfg.input_size,
-                             num_workers=cfg.num_workers, load_masks=True)
+        sub(f"local validation — per-anomaly-type pixel-AP  "
+            f"(tta={cfg.tta}, multiview={cfg.multiview}"
+            + (f", alpha={cfg.mv_alpha}" if cfg.multiview != "none" else "")
+            + ")")
+        scores_raw, gts = score_fn(pc, train_anom, cfg, load_masks=True)
         scores_per_idx: dict[int, np.ndarray] = {}
         gt_per_idx: dict[int, np.ndarray] = {}
-        with torch.inference_mode():
-            for x, masks, idxs in loader:
-                score_maps = pc.score_batch(x, tta=cfg.tta).numpy()
-                masks_np = masks.numpy()
-                for b in range(x.shape[0]):
-                    sm = gaussian_smooth(score_maps[b], cfg.smooth_sigma)
-                    scores_per_idx[int(idxs[b])] = sm
-                    gt_per_idx[int(idxs[b])] = masks_np[b]
-                if cfg.aggressive_cleanup and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+        for r_idx, sm_raw in scores_raw.items():
+            scores_per_idx[r_idx] = gaussian_smooth(sm_raw, cfg.smooth_sigma)
+            gt_per_idx[r_idx] = gts[r_idx]
+
         by_anom: dict[str, list[float]] = defaultdict(list)
         for r_idx, sm in scores_per_idx.items():
             r = train_anom[r_idx]
             ap = pixel_average_precision(sm, gt_per_idx[r_idx])
             by_anom[r.anomaly_type or "?"].append(ap)
-            # Stacker hook: record the raw per-pixel score map + GT mask
-            # for this (class, anomaly_type, view). The smoothed,
-            # full-input-resolution map is exactly what the stacker wants
-            # as input — same as what we'd compute at test time before
-            # the final submission resize.
+            # Stacker hook: smoothed per-pixel map + GT mask.
             if local_saver is not None:
                 local_saver.add(
                     cls=cls,
@@ -1078,25 +1225,14 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
     test_results: list[tuple[ImageRecord, np.ndarray]] = []
     if not cfg.skip_submission and test:
         sub(f"scoring {len(test)} test images "
-            f"(tta={cfg.tta}, score_bs={cfg.score_batch_size})")
-        loader = make_loader(test, batch_size=cfg.score_batch_size,
-                             input_size=cfg.input_size,
-                             num_workers=cfg.num_workers, load_masks=False)
-        n_done = 0
-        last_log = 0
-        with torch.inference_mode():
-            for x, _, idxs in loader:
-                score_maps = pc.score_batch(x, tta=cfg.tta).numpy()
-                for b in range(x.shape[0]):
-                    sm = gaussian_smooth(score_maps[b], cfg.smooth_sigma)
-                    sm = maybe_resize_to_submission(sm)
-                    test_results.append((test[int(idxs[b])], sm))
-                n_done += x.shape[0]
-                if n_done - last_log >= 200:
-                    last_log = n_done
-                    print(f"      scored {n_done}/{len(test)}", flush=True)
-                if cfg.aggressive_cleanup and torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+            f"(tta={cfg.tta}, multiview={cfg.multiview}"
+            + (f", alpha={cfg.mv_alpha}" if cfg.multiview != "none" else "")
+            + ")")
+        scores_raw, _ = score_fn(pc, test, cfg, load_masks=False)
+        for r_idx, sm_raw in scores_raw.items():
+            sm = gaussian_smooth(sm_raw, cfg.smooth_sigma)
+            sm = maybe_resize_to_submission(sm)
+            test_results.append((test[r_idx], sm))
 
     elapsed_min = (time.time() - t_start) / 60.0
     print(f"  class {cls} done in {elapsed_min:.1f} min")
@@ -1150,29 +1286,16 @@ def main():
     ap.add_argument("--data-root",  type=Path, default=DEFAULT_DATA_ROOT)
     ap.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
     ap.add_argument("--backbone", default="wide_resnet50_2",
-                    choices=ALL_BACKBONES,
-                    help="Backbone. ResNets use ImageNet weights; DINOv2 "
-                         "backbones are loaded via torch.hub from "
-                         "facebookresearch/dinov2 (cache at $TORCH_HOME/hub).")
-    ap.add_argument("--feature-layers", type=int, nargs="+", default=[2, 3],
-                    help="ResNet: stages 1..4 to fuse. DINOv2: transformer "
-                         "block indices 0..n_blocks-1 (ViT-S/14 has 12, "
-                         "ViT-L/14 has 24).")
-    ap.add_argument("--target-layer", default="auto",
-                    help="Spatial-grid anchor: auto|<int>. For ResNet 'auto' "
-                         "picks layer 2; for DINOv2 'auto' picks the smallest "
-                         "block index (all blocks share the same grid).")
-    ap.add_argument("--input-size", type=int, default=224,
-                    help="Input H=W. ResNet: 224/256/320/384/.../512 — any "
-                         "value. DINOv2: must be a multiple of 14 "
-                         "(common: 224, 392, 448, 518, 588, 700).")
+                    choices=ALL_BACKBONES)
+    ap.add_argument("--feature-layers", type=int, nargs="+", default=[2, 3])
+    ap.add_argument("--target-layer", default="auto")
+    ap.add_argument("--input-size", type=int, default=224)
     ap.add_argument("--coreset-frac", type=float, default=0.10)
     ap.add_argument("--coreset-fp16", action="store_true")
     ap.add_argument("--coreset-algo", default="minibatch",
                     choices=["exact", "minibatch"])
     ap.add_argument("--coreset-batch", type=int, default=64)
-    ap.add_argument("--batch-size", type=int, default=32,
-                    help="Feature-extraction batch size.")
+    ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--score-batch-size", type=int, default=16)
     ap.add_argument("--score-chunk", type=int, default=4096)
     ap.add_argument("--memory-chunk", type=int, default=32768)
@@ -1184,6 +1307,16 @@ def main():
     ap.add_argument("--knn-k", type=int, default=9)
     ap.add_argument("--tta", default="none",
                     choices=["none", "hflip", "vflip", "hvflip", "d4"])
+    ap.add_argument("--multiview", default="none",
+                    choices=["none", "sibling-bank"],
+                    help="`sibling-bank`: at scoring time, batch all views "
+                         "of a sample and use the OTHER views' patch "
+                         "features as a per-sample memory bank that boosts "
+                         "view-inconsistent pixels.")
+    ap.add_argument("--mv-alpha", type=float, default=0.5,
+                    help="Multi-view blend weight in [0, 1]. 0 disables "
+                         "the boost; 1 fully replaces the standard score "
+                         "with the inconsistency signal.")
     ap.add_argument("--aggressive-cleanup", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--only-classes", nargs="*", default=[])
@@ -1201,19 +1334,21 @@ def main():
     target_layer = resolve_target_layer(feature_layers, args.target_layer,
                                           args.backbone)
 
-    # ── Backbone-specific input validation
     if args.backbone in DINOV2_BACKBONES:
         if args.input_size % 14 != 0:
             raise SystemExit(
                 f"[FATAL] DINOv2 requires --input-size divisible by 14; "
-                f"got {args.input_size}. Try 392 (28x28 tokens) or 518 "
-                f"(37x37, DINOv2 native resolution).")
+                f"got {args.input_size}. Try 392 or 518.")
         nb = DINOV2_NBLOCKS[args.backbone]
         bad = [l for l in feature_layers if not (0 <= l < nb)]
         if bad:
             raise SystemExit(
-                f"[FATAL] DINOv2 block indices out of range [0, {nb - 1}]: "
-                f"{bad}. For ViT-S/14 try '--feature-layers 3 6 9 11'.")
+                f"[FATAL] DINOv2 block indices out of range "
+                f"[0, {nb - 1}]: {bad}.")
+
+    if not (0.0 <= args.mv_alpha <= 1.0):
+        raise SystemExit(f"[FATAL] --mv-alpha must be in [0, 1]; "
+                          f"got {args.mv_alpha}")
 
     cfg = RunConfig(
         data_root=args.data_root, report_dir=args.report_dir,
@@ -1234,6 +1369,7 @@ def main():
         num_workers=args.num_workers,
         smooth_sigma=args.smooth_sigma, knn_k=args.knn_k,
         tta=args.tta,
+        multiview=args.multiview, mv_alpha=args.mv_alpha,
         seed=args.seed, only_classes=args.only_classes,
         skip_eval=args.skip_eval, skip_submission=args.skip_submission,
         save_memory_banks=not args.no_save_banks,
@@ -1247,7 +1383,7 @@ def main():
     run_dir.mkdir(parents=True, exist_ok=True)
 
     with tee_to(run_dir / "run_log.txt"):
-        hr(f"PATCHCORE v5 (DINOv2-capable) — RUN {run_id}", "█")
+        hr(f"PATCHCORE v6 (DINOv2+multiview) — RUN {run_id}", "█")
         print(f"  data_root        : {cfg.data_root}")
         print(f"  report_dir       : {cfg.report_dir}")
         print(f"  run_dir          : {run_dir}")
@@ -1271,6 +1407,7 @@ def main():
         print(f"  project_chunk    : {cfg.project_chunk}")
         print(f"  smooth_sigma     : {cfg.smooth_sigma}")
         print(f"  tta              : {cfg.tta}")
+        print(f"  multiview        : {cfg.multiview}  alpha={cfg.mv_alpha}")
         print(f"  save_banks       : {cfg.save_memory_banks}")
         print(f"  save_local_preds : {not args.no_save_local_preds}")
         print(f"  aggressive_clean : {cfg.aggressive_cleanup}")
@@ -1296,8 +1433,6 @@ def main():
             classes = [c for c in classes if c in set(cfg.only_classes)]
         print(f"\n  running on {len(classes)} class(es): {', '.join(classes)}")
 
-        # Stacker hook: one saver across all classes; written once at the
-        # end of the run. Disabled if --skip-eval (no GT to save).
         local_saver: LocalPredSaver | None = None
         if not cfg.skip_eval and not args.no_save_local_preds:
             local_saver = LocalPredSaver()
@@ -1314,8 +1449,6 @@ def main():
             class_aps[cls] = res["class_mean_ap"]
             class_elapsed[cls] = res["elapsed_min"]
 
-        # Persist the accumulated local predictions ONCE (single npz
-        # for the whole run). The stacker reads this file directly.
         if local_saver is not None and len(local_saver) > 0:
             local_saver.save(run_dir / "local_predictions.npz")
 
@@ -1345,6 +1478,9 @@ def main():
                   f"    {run_dir / 'submission.zip'}")
 
         master_csv = cfg.report_dir / "ablation_master.csv"
+        notes = ""
+        if cfg.multiview != "none":
+            notes = f"multiview={cfg.multiview} mv_alpha={cfg.mv_alpha}"
         row = {
             "run_id": run_id,
             "run_tag": cfg.run_tag,
@@ -1375,6 +1511,7 @@ def main():
             "runtime_min": f"{(time.time() - t_total) / 60:.1f}",
             "submission_path": str(run_dir / "submission.zip")
                                 if not cfg.skip_submission else "",
+            "notes": notes,
         }
         append_to_ablation_master(master_csv, row)
         print(f"\n  ablation row appended -> {master_csv}")
