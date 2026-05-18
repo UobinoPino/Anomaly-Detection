@@ -718,12 +718,12 @@ def main():
                     help="CSV with columns ID,class. If absent, derived "
                          "from --data-root.")
     ap.add_argument("--data-root", type=Path,
-                    default=Path("/work/u10813429/anomaly-detection/data"))
+                    default=Path("/mnt/c/Users/Francoo/PycharmProjects/anomaly-detection/data"))
     ap.add_argument("--out", type=Path,
-                    default=Path("/work/u10813429/anomaly-detection/"
+                    default=Path("/mnt/c/Users/Francoo/PycharmProjects/anomaly-detection/"
                                   "baseline_out/runs/fusion/submission.csv"))
     ap.add_argument("--master-csv", type=Path,
-                    default=Path("/work/u10813429/anomaly-detection/"
+                    default=Path("/mnt/c/Users/Francoo/PycharmProjects/anomaly-detection/"
                                   "baseline_out/ablation_master.csv"))
     ap.add_argument("--run-tag", default="fusion")
     ap.add_argument("--no-zip", action="store_true")
