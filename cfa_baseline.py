@@ -1,5 +1,3 @@
-
-
 """Spacepresso CFA baseline — Coupled-hypersphere-based Feature Adaptation.
 
 Implements "CFA: Coupled-hypersphere-based Feature Adaptation for
