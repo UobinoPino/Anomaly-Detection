@@ -55,25 +55,25 @@ uv run python draem_baseline.py \
 # this if you want to A/B against base=32 and confirm the larger model
 # is actually helping. Uncomment to run alongside exp13.
 #
- echo "================================================================"
- echo "EXPERIMENT 13b — DRAEM @ in256, base=24, 2500 iters"
- echo "================================================================"
- uv run python draem_baseline.py \
-     --data-root  "$DATA" \
-     --report-dir "$OUT" \
-     --input-size 256 \
-     --unet-base 24 \
-     --total-iters 2500 \
-     --batch-size 12 \
-     --lr 5e-5 \
-     --anomaly-prob 0.5 \
-     --focal-gamma 2.0 \
-     --focal-alpha 0.5 \
-     --num-workers 8 \
-     --score-batch-size 16 \
-     --smooth-sigma 1.5 \
-     --tta hvflip \
-     --run-tag "exp13b-draem-in256-b24"
+# echo "================================================================"
+# echo "EXPERIMENT 13b — DRAEM @ in256, base=24, 2500 iters"
+# echo "================================================================"
+# uv run python draem_baseline.py \
+#     --data-root  "$DATA" \
+#     --report-dir "$OUT" \
+#     --input-size 256 \
+#     --unet-base 24 \
+#     --total-iters 2500 \
+#     --batch-size 12 \
+#     --lr 5e-5 \
+#     --anomaly-prob 0.5 \
+#     --focal-gamma 2.0 \
+#     --focal-alpha 0.5 \
+#     --num-workers 8 \
+#     --score-batch-size 16 \
+#     --smooth-sigma 1.5 \
+#     --tta hvflip \
+#     --run-tag "exp13b-draem-in256-b24"
 
 echo
 echo "================================================================"

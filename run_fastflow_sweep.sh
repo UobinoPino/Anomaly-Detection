@@ -24,7 +24,7 @@
 #   by the default --amp=True), so we get the speedup where it's safe.
 
 set -euo pipefail
-
+# hello
 DATA=/work/u10813429/anomaly-detection/data
 OUT=/work/u10813429/anomaly-detection/baseline_out
 

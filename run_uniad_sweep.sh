@@ -180,15 +180,15 @@ uv run python uniad_baseline.py \
 # was on PatchCore.
 #
 # If you only want the production run, comment this block out.
-echo "================================================================"
-echo "EXPERIMENT 12MV — UniAD @ DINOv2 ViT-S/14 block 9, sibling-bank MV"
-echo "================================================================"
-
-uv run python uniad_baseline.py \
-    "${COMMON[@]}" \
-    --multiview sibling-bank \
-    --mv-alpha 0.5 \
-    --run-tag "exp12mv-uniad-dnv2s14-MV"
+#echo "================================================================"
+#echo "EXPERIMENT 12MV — UniAD @ DINOv2 ViT-S/14 block 9, sibling-bank MV"
+#echo "================================================================"
+#
+#uv run python uniad_baseline.py \
+#    "${COMMON[@]}" \
+#    --multiview sibling-bank \
+#    --mv-alpha 0.5 \
+#    --run-tag "exp12mv-uniad-dnv2s14-MV"
 
 
 # ── Done ───────────────────────────────────────────────────────────────────
