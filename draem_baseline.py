@@ -1,69 +1,87 @@
-"""Spacepresso DRAEM baseline.
+"""Spacepresso DRAEM baseline — v1.1.
 
 Implements "DRAEM: A discriminatively trained reconstruction embedding
 for surface anomaly detection" (Zavrtanik et al., ICCV 2021).
 
-Why this is an interesting fusion partner for the Spacepresso stacker:
+# v1.1 changelog (bugs fixed for stacker integration)
 
-  - All your other bases (PatchCore, CutPaste, RD, EfficientAD, UniAD)
-    score by FEATURE DISTANCE in some pretrained backbone's latent
-    space. They share a common failure mode: defects that look
-    in-distribution in feature space (gear-tooth fractures, capsule
-    cracks) but obvious to a segmentation head are systematically
-    missed.
+  - Grad-clipping ordering: clip is now between scaler.unscale_() and
+    scaler.step(), not after the step (which was a no-op at best and a
+    hard error on recent PyTorch).
+  - Synthetic-anomaly diversity: per-worker advancing Generator instead
+    of a deterministic (worker_seed, idx) hash. Old behaviour produced
+    only ~|train_good| unique Perlin shapes per worker for the entire
+    run; new behaviour reseeds-and-advances per __getitem__ call while
+    staying reproducible from the worker seed.
+  - torch.cuda.amp.autocast(...) → torch.amp.autocast("cuda", ...).
+  - AMP no longer gated on unet_base >= 32.
 
-  - DRAEM operates on RGB end-to-end with a *segmentation* head
-    trained on SYNTHETIC defects. It learns "what a defect looks like
-    in pixel space," which is fundamentally orthogonal to "is this
-    feature far from normal-data feature distribution." Different
-    error modes -> stacker gains.
+# Stacker integration contract (xgboost_stacker_v5.py)
 
-# Multi-view note
+  This baseline writes the SAME three artefacts every other baseline
+  writes, in the same run_dir layout. The shell stacker just needs:
 
-  Sibling-bank multi-view (the one used in EfficientAD / UniAD) compares
-  TEACHER FEATURES across the 5 views of a sample. DRAEM has no teacher
-  backbone -- the reconstructive network reads RGB directly and the
-  discriminative head outputs per-pixel logits. There is no shared
-  feature space across views to compare against. We therefore do
-  TTA-only inference here. Score-level multi-view aggregation (max /
-  view-vote across views) could still apply but is best handled in
-  postprocess_submission.py since it's submission-agnostic.
+      $DRAEM_RUN/submission.csv          ← test scores (q8rle)
+      $DRAEM_RUN/local_predictions.npz   ← per-pixel val scores + GTs
 
-# Architecture
+  Critically, each call to LocalPredSaver.add() passes image_path=r.path
+  (full path). The saver stores it; xgboost_stacker_v5 reads it via
+  Path(p).name and parses _viewN to group siblings. This is what
+  makes the v4 cross-view aggregates (xv_max/xv_mean/xv_std/xv_lonely),
+  CVD, and per-(class, view) rank-norm light up for DRAEM. Without
+  image_path the stacker silently falls back to per-class rank-norm
+  and zero cross-view features.
+
+  The run_dir name starts with "draem_" so detect_model_family in the
+  stacker can recognise it if you add ("draem", "draem") to
+  MODEL_FAMILY_PATTERNS. Without that addition the family resolves to
+  "unknown", which in v4/v5 defaults to small_cc=0 — exactly what we
+  want for DRAEM anyway (no CC suppression needed; softmax-over-mask
+  scores are already well-localised).
+
+# Why this is an interesting fusion partner for the stacker
+
+  - All your other bases (PatchCore, CutPaste, RD, EfficientAD, UniAD,
+    FastFlow, CFA) score by FEATURE DISTANCE in some pretrained
+    backbone's latent space. They share a failure mode: defects that
+    look in-distribution in feature space but are obvious to a
+    pixel-space segmentation head get systematically missed.
+  - DRAEM operates on RGB end-to-end with a SEGMENTATION head trained
+    on synthetic defects. It learns "what a defect looks like in
+    pixel space", which is fundamentally orthogonal to "is this
+    feature far from normal-data feature distribution". Different
+    error modes → stacker gain.
+
+# Architecture (unchanged from v1)
 
   RECONSTRUCTIVE U-NET (R):
-    Input  : 3xHxW (RGB, normalised)
-    Encoder: 6 stride-2 conv blocks (32 -> 1024 channels)
+    Input  : 3xHxW (RGB in [0, 1], no ImageNet norm)
+    Encoder: 6 stride-2 conv blocks (base → 32*base channels)
     Decoder: symmetric up-convs with skip connections
     Output : 3xHxW reconstruction
     Trained to denoise images that have synthetic anomalies pasted on
     them, back to the clean original.
 
   DISCRIMINATIVE U-NET (D):
-    Input  : concat([original_with_synth_anom, R(original)], dim=1) -> 6xHxW
+    Input  : concat([anom_img, R(anom_img)], dim=1)  → 6xHxW
     Output : 2xHxW logits (class 0 = normal, class 1 = anomaly)
-    Trained to segment the synthetic anomaly mask from the
-    concatenated (anomalous-image, reconstruction) pair.
 
-  TOTAL PARAMS: ~63M for the default config (R: ~31M, D: ~31M).
-  Comfortably trains at batch 8 on an L4 24 GB.
+  TOTAL PARAMS: ~63M for base=32 (R: ~31M, D: ~31M).
 
 # Synthetic anomaly generation (Perlin-noise + texture source)
 
-  1. Sample Perlin noise at the image resolution; binarise via Otsu's
-     method to produce an irregular shape mask M (~10-30% area).
-  2. Apply random rotation/scale to M.
-  3. Sample a "texture" image T:
-        * 50%: random gradient + random colour fill
-        * 50%: a randomly-coloured solid patch
-     (We don't ship the DTD texture dataset here; for Spacepresso the
-     gradient + solid scheme is enough and avoids an extra 1 GB download.)
-  4. Beta-blend the clean image with T, weighted by M:
-        x_anom = (1 - beta * M) * x_clean + (beta * M) * T
-     where beta ~ U(0.15, 1.0).
-  5. The target reconstruction is the ORIGINAL x_clean (so R learns
-     to undo the corruption).
-  6. The target segmentation is M itself (binary).
+  1. Sample fractal Perlin noise at the image resolution; threshold at
+     a percentile sampled in [60, 85] to produce an irregular mask M
+     with reasonable coverage. Sometimes rotated 90/180/270°.
+  2. Sample a "texture" image T:
+       * 50%: random colour gradient (horizontal or vertical)
+       * 50%: flat random colour
+     (We don't ship DTD; the gradient + solid scheme works for
+     Spacepresso and avoids a 1 GB download.)
+  3. Beta-blend the clean image with T weighted by M:
+        x_anom = (1 - β·M)·x_clean + (β·M)·T,   β ~ U(0.15, 1.0)
+  4. Reconstruction target = x_clean (R learns to undo corruption).
+  5. Segmentation target = M (binary, gives D the per-pixel label).
 
 # Losses
 
@@ -71,25 +89,24 @@ Why this is an interesting fusion partner for the Spacepresso stacker:
     L_D = focal_loss(D([x_anom, R(x_anom)]), M)
     L   = L_R + L_D
 
-  Focal loss handles the heavy class imbalance (anomaly pixels are
-  10-30% on average but vary widely between samples).
+# Multi-view note (unchanged)
 
-# Inference
-
-    x       : test image, shape (3, H, W), CLIP-style normalised? NO --
-              DRAEM uses simple [0, 1] scaling (no per-channel norm).
-    R(x)    : reconstruction
-    map     : softmax(D([x, R(x)]))[1]    -- per-pixel anomaly probability
-    score   : maybe smoothed and resized to (224, 224) for submission
+  Sibling-bank multi-view (the one used in EfficientAD / UniAD)
+  compares TEACHER FEATURES across the 5 views of a sample. DRAEM has
+  no teacher backbone — the reconstructive network reads RGB directly
+  and the discriminative head outputs per-pixel logits. There is no
+  shared feature space across views to compare against. We therefore
+  do TTA-only inference here. Score-level cross-view aggregation
+  happens inside the stacker (v4 xv_aggregates / CVD features) which
+  is exactly the right layer for it.
 
 # Memory and speed (L4 24 GB)
 
   Per class at input 256, batch 8, 2500 iters:
-    Training: ~5 min (forward + backward on R and D, AMP)
+    Training: ~5 min  (R + D forward + backward, AMP)
     Eval:     ~10 s
     Test:     ~25 s
-    Per class total: ~6 min
-  Full 8 classes: ~50 min
+  Full 8-class run: ~50 min.
 
 # Dependencies
 
@@ -164,7 +181,7 @@ def now_hms(): return time.strftime("%H:%M:%S")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Perlin noise (numpy, deterministic given a seed)
+# Perlin noise (numpy, deterministic given a Generator)
 # ─────────────────────────────────────────────────────────────────────────────
 def _smoothstep(t):
     return t * t * t * (t * (t * 6 - 15) + 10)
@@ -172,7 +189,7 @@ def _smoothstep(t):
 
 def _generate_perlin_2d(shape, res, rng: np.random.Generator):
     """Classic 2D Perlin noise. shape = (H, W); res = (Hres, Wres) such
-    that H and W are multiples of res. Returns array in roughly [-1, 1]."""
+    that H, W are multiples of res. Returns values in roughly [-1, 1]."""
     delta = (res[0] / shape[0], res[1] / shape[1])
     d = (shape[0] // res[0], shape[1] // res[1])
     grid = np.mgrid[0:res[0]:delta[0], 0:res[1]:delta[1]] \
@@ -210,15 +227,12 @@ def _generate_fractal_noise(shape, res, octaves=4,
 
 
 def sample_anomaly_mask(H: int, W: int, rng: np.random.Generator) -> np.ndarray:
-    """Returns binary (H, W) mask via Perlin noise + Otsu threshold.
-    H and W must be divisible by 64 for the multi-octave Perlin to
-    tile cleanly; we round up the inner resolution and crop. Output
-    has roughly 10-30%% positive coverage on average."""
-    # Sample two scales of Perlin noise (loose mixture controls shape
-    # variety: sometimes blobby, sometimes streaky).
+    """Binary (H, W) mask via Perlin noise + percentile threshold.
+
+    Roughly 15–40% positive coverage (depends on the sampled threshold
+    percentile in [60, 85]). Two scales mixed for shape variety."""
     scale_a = rng.choice([2, 4, 8])
     scale_b = rng.choice([8, 16])
-    # Round shape up to nearest multiple of scale*8 to avoid grid issues.
     base_a = ((H + scale_a * 8 - 1) // (scale_a * 8)) * (scale_a * 8)
     noise_a = _generate_fractal_noise(
         (base_a, base_a), (scale_a, scale_a),
@@ -228,12 +242,9 @@ def sample_anomaly_mask(H: int, W: int, rng: np.random.Generator) -> np.ndarray:
         (base_b, base_b), (scale_b, scale_b),
         octaves=3, persistence=0.5, rng=rng)[:H, :W]
     noise = 0.5 * noise_a + 0.5 * noise_b
-    # Threshold at a percentile sampled from a curriculum-friendly
-    # range -- always produces a mask with SOME coverage.
     pct = rng.uniform(60, 85)
     th = np.percentile(noise, pct)
     mask = (noise > th).astype(np.float32)
-    # Occasional rotation for shape diversity.
     if rng.random() < 0.5:
         k = int(rng.integers(1, 4))
         mask = np.rot90(mask, k=k).copy()
@@ -244,10 +255,8 @@ def sample_anomaly_mask(H: int, W: int, rng: np.random.Generator) -> np.ndarray:
 # Synthetic anomaly generation (Perlin mask + texture)
 # ─────────────────────────────────────────────────────────────────────────────
 def random_texture(H: int, W: int, rng: np.random.Generator) -> np.ndarray:
-    """One of two cheap texture schemes:
-       (a) gradient between two random colours
-       (b) flat random colour
-    Returns float32 (H, W, 3) in [0, 1]."""
+    """Cheap texture: either a 2-colour gradient or a flat colour, plus
+    light pixel noise. (H, W, 3) float32 in [0, 1]."""
     if rng.random() < 0.5:
         c1 = rng.random(3, dtype=np.float64)
         c2 = rng.random(3, dtype=np.float64)
@@ -262,9 +271,6 @@ def random_texture(H: int, W: int, rng: np.random.Generator) -> np.ndarray:
     else:
         c = rng.random(3, dtype=np.float64).astype(np.float32)
         tex = np.broadcast_to(c[None, None, :], (H, W, 3)).copy()
-    # Add light pixel noise so the texture has high-freq structure (helps
-    # the discriminator learn a generalisable defect signature instead
-    # of memorising flat-colour patches).
     noise = rng.normal(0.0, 0.03, size=(H, W, 3)).astype(np.float32)
     tex = np.clip(tex + noise, 0.0, 1.0)
     return tex
@@ -278,7 +284,7 @@ def synthesise_anomaly(img01: np.ndarray, rng: np.random.Generator
     mask = sample_anomaly_mask(H, W, rng)        # (H, W) in {0, 1}
     tex  = random_texture(H, W, rng)              # (H, W, 3) in [0, 1]
     beta = float(rng.uniform(0.15, 1.0))
-    m3 = mask[..., None]                          # (H, W, 1)
+    m3 = mask[..., None]
     corrupted = (1.0 - beta * m3) * img01 + (beta * m3) * tex
     corrupted = np.clip(corrupted, 0.0, 1.0).astype(np.float32)
     return corrupted, mask.astype(np.float32)
@@ -286,21 +292,42 @@ def synthesise_anomaly(img01: np.ndarray, rng: np.random.Generator
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Datasets
+#
+# IMPORTANT — augmentation diversity (v1.1 fix):
+# Each DataLoader worker keeps a single advancing Generator in module
+# scope (set by worker_init_fn). __getitem__ pulls from it so every
+# call produces a different Perlin mask + texture, while the worker
+# seed alone determines the full sequence. Reproducible per seed,
+# diverse across the run.
 # ─────────────────────────────────────────────────────────────────────────────
+_WORKER_RNG: np.random.Generator | None = None
+
+
+def worker_init_fn(_worker_id):
+    """Seed numpy/random per worker AND build the advancing Generator
+    used by DraemTrainDataset.__getitem__."""
+    global _WORKER_RNG
+    base = torch.initial_seed() % 2 ** 32
+    np.random.seed(base)
+    random.seed(base)
+    _WORKER_RNG = np.random.default_rng(base)
+
+
 class DraemTrainDataset(Dataset):
     """train/good images. Each __getitem__ returns:
-        clean    : (3, H, W) float32 in [0, 1]
-        anom     : (3, H, W) float32 in [0, 1] -- clean + synthetic defect
-        mask     : (H, W) float32 in {0, 1}
-    Half the time we return clean as-is with a zero mask (no synth) so
-    the discriminator also sees normal pairs."""
+        clean : (3, H, W) float32 in [0, 1]
+        anom  : (3, H, W) float32 in [0, 1] (clean + synthetic defect)
+        mask  : (H, W)    float32 in {0, 1}
+    Half the time we return clean as-is with a zero mask, so the
+    discriminator also sees normal pairs (prevents D from collapsing
+    to always-predicting-anomaly)."""
     def __init__(self, records: list[ImageRecord], input_size: int,
                  anomaly_prob: float = 0.5, seed: int = 0):
         self.records = records
         self.input_size = input_size
         self.anomaly_prob = anomaly_prob
         self.seed = seed
-        # Resize only; DRAEM normalises to [0, 1] not ImageNet stats.
+        # DRAEM normalises to [0, 1], NOT ImageNet stats.
         self.resize = transforms.Resize((input_size, input_size))
 
     def __len__(self): return len(self.records)
@@ -309,14 +336,23 @@ class DraemTrainDataset(Dataset):
         with Image.open(path) as im:
             im = im.convert("RGB")
             im = self.resize(im)
-            arr = np.asarray(im, dtype=np.float32) / 255.0    # (H, W, 3)
+            arr = np.asarray(im, dtype=np.float32) / 255.0
         return arr
+
+    def _get_rng(self, item_idx: int) -> np.random.Generator:
+        """Returns the worker-local advancing Generator. Falls back to
+        a deterministic one when running with num_workers=0 (no worker
+        init has fired) — that path is only used for ad-hoc debugging."""
+        global _WORKER_RNG
+        if _WORKER_RNG is None:
+            seed = ((self.seed * 1_000_003 + item_idx * 9973)
+                    & 0xFFFFFFFF)
+            _WORKER_RNG = np.random.default_rng(seed)
+        return _WORKER_RNG
 
     def __getitem__(self, i):
         r = self.records[i]
-        rng = np.random.default_rng(
-            self.seed * 1_000_003 + i * 9973
-            + torch.initial_seed() % (2 ** 32))
+        rng = self._get_rng(i)
         img = self._load_rgb01(r.path)
         H, W = img.shape[:2]
         if rng.random() < self.anomaly_prob:
@@ -358,11 +394,6 @@ class DraemInferenceDataset(Dataset):
         return x, torch.from_numpy(m), i
 
 
-def worker_init_fn(_worker_id):
-    base = torch.initial_seed() % 2 ** 32
-    np.random.seed(base); random.seed(base)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Network blocks
 # ─────────────────────────────────────────────────────────────────────────────
@@ -395,15 +426,14 @@ class _Down(nn.Module):
 class _Up(nn.Module):
     def __init__(self, c_in, c_out):
         super().__init__()
-        # Note: c_in is the channel count BEFORE skip concatenation. After
-        # the upsample we concat with the skip (c_out channels) so the
-        # DoubleConv input is c_in + c_out.
+        # c_in = channels BEFORE skip concat; after upsample we
+        # concat with skip (c_out channels), so DoubleConv input is
+        # c_in + c_out.
         self.up = nn.Upsample(scale_factor=2, mode="bilinear",
                                 align_corners=False)
         self.conv = _DoubleConv(c_in + c_out, c_out)
     def forward(self, x, skip):
         x = self.up(x)
-        # Defensive: if rounding loses a pixel, pad to skip's shape.
         if x.shape[-2:] != skip.shape[-2:]:
             x = F.interpolate(x, size=skip.shape[-2:], mode="bilinear",
                               align_corners=False)
@@ -437,17 +467,21 @@ class DraemUNet(nn.Module):
         x4 = self.down4(x3)
         x5 = self.down5(x4)
         u = self.up1(x5, x4)
-        u = self.up2(u, x3)
-        u = self.up3(u, x2)
-        u = self.up4(u, x1)
-        u = self.up5(u, x0)
+        u = self.up2(u,  x3)
+        u = self.up3(u,  x2)
+        u = self.up4(u,  x1)
+        u = self.up5(u,  x0)
         return self.outc(u)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Losses
 # ─────────────────────────────────────────────────────────────────────────────
-def ssim_loss(x: torch.Tensor, y: torch.Tensor, window: int = 11, sigma: float = 1.5):
+def ssim_loss(x: torch.Tensor, y: torch.Tensor,
+               window: int = 11, sigma: float = 1.5) -> torch.Tensor:
+    """SSIM loss with small numerical constants. Always called in fp32
+    (via a nested autocast disable in the training loop) to keep the
+    1e-4 / 9e-4 constants representable."""
     x = torch.nan_to_num(x.float(), nan=0.0, posinf=1.0, neginf=0.0)
     y = torch.nan_to_num(y.float(), nan=0.0, posinf=1.0, neginf=0.0)
 
@@ -459,7 +493,6 @@ def ssim_loss(x: torch.Tensor, y: torch.Tensor, window: int = 11, sigma: float =
 
     k2 = (g[:, None] * g[None, :]).clamp_min(1e-8)
     kernel = k2.expand(C, 1, window, window).contiguous()
-
     pad = half
 
     mu_x = F.conv2d(x, kernel, padding=pad, groups=C)
@@ -482,9 +515,7 @@ def ssim_loss(x: torch.Tensor, y: torch.Tensor, window: int = 11, sigma: float =
 
     num = (2 * mu_xy + c1) * (2 * sigma_xy + c2)
     den = (mu_x2 + mu_y2 + c1) * (sigma_x2 + sigma_y2 + c2)
-
     ssim_map = num / den.clamp_min(1e-8)
-
     return 1.0 - torch.nan_to_num(ssim_map.mean(), nan=1.0)
 
 
@@ -494,13 +525,11 @@ def focal_loss(logits: torch.Tensor, target: torch.Tensor,
     """Multi-class focal loss for the per-pixel segmentation head.
     logits: (B, 2, H, W); target: (B, H, W) long with class indices 0/1.
     `alpha` is the weight on the positive (anomaly) class."""
-    logp = F.log_softmax(logits, dim=1)                   # (B, 2, H, W)
+    logp = F.log_softmax(logits, dim=1)
     p = logp.exp()
     target = target.long()
-    # Gather logp and p for the true class at each pixel.
     logp_t = logp.gather(1, target.unsqueeze(1)).squeeze(1)
     p_t = p.gather(1, target.unsqueeze(1)).squeeze(1)
-    # Per-pixel alpha weight: alpha for class 1, (1-alpha) for class 0.
     w = torch.where(target == 1, torch.full_like(p_t, alpha),
                                   torch.full_like(p_t, 1.0 - alpha))
     loss = -w * ((1.0 - p_t) ** gamma) * logp_t
@@ -535,7 +564,10 @@ def train_draem(net_r: DraemUNet, net_d: DraemUNet,
                                     weight_decay=cfg.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=max(total_iters, 1))
-    use_amp = (device.type == "cuda" and cfg.amp and cfg.unet_base >= 32)
+
+    # AMP (no longer gated on unet_base; the SSIM block disables
+    # autocast internally for the constants that need fp32).
+    use_amp = (device.type == "cuda" and cfg.amp)
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     print(f"    [{now_hms()}] training: {n_epochs} epochs x "
@@ -554,38 +586,39 @@ def train_draem(net_r: DraemUNet, net_d: DraemUNet,
             mask  = mask.to(device,  non_blocking=True)
 
             clean = torch.nan_to_num(clean, nan=0.0, posinf=1.0, neginf=0.0)
-            anom = torch.nan_to_num(anom, nan=0.0, posinf=1.0, neginf=0.0)
-            mask = torch.nan_to_num(mask, nan=0.0, posinf=0.0, neginf=0.0)
-            
+            anom  = torch.nan_to_num(anom,  nan=0.0, posinf=1.0, neginf=0.0)
+            mask  = torch.nan_to_num(mask,  nan=0.0, posinf=0.0, neginf=0.0)
+
             optimizer.zero_grad(set_to_none=True)
+
             with torch.amp.autocast("cuda", enabled=use_amp):
                 recon = net_r(anom)
-                # Discriminator sees the corrupted image + its
-                # reconstruction. The pair is informative because the
-                # reconstruction "tries to undo" the corruption.
                 d_in = torch.cat([anom, recon], dim=1)         # (B, 6, H, W)
                 logits = net_d(d_in)                            # (B, 2, H, W)
                 L_l2 = F.mse_loss(recon.float(), clean.float())
-
-                with torch.cuda.amp.autocast(False):
+                # SSIM uses tiny constants — run it in fp32 even under AMP.
+                with torch.amp.autocast("cuda", enabled=False):
                     L_ssim = ssim_loss(recon, clean)
-
                 L_R = L_l2 + L_ssim
                 L_D = focal_loss(logits, mask, gamma=cfg.focal_gamma,
                                    alpha=cfg.focal_alpha)
                 loss = L_R + L_D
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
 
+            # ── Correct AMP grad-clip ordering (v1.1 fix) ───────────
+            # backward → unscale_ → clip_grad_norm_ → step → update.
+            # The v1 ordering ran clip AFTER step, which is a no-op
+            # at best and raises on recent PyTorch.
+            scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(params, 1.0)
-
+            scaler.step(optimizer)
+            scaler.update()
             scheduler.step()
+
             B = clean.shape[0]
             loss_sum += loss.item() * B
-            lr_sum   += L_R.item() * B
-            ld_sum   += L_D.item() * B
+            lr_sum   += L_R.item()  * B
+            ld_sum   += L_D.item()  * B
             n += B
         if (epoch + 1) % log_every == 0 or epoch == n_epochs - 1:
             print(f"      epoch {epoch+1:>3}/{n_epochs}  "
@@ -604,7 +637,7 @@ def train_draem(net_r: DraemUNet, net_d: DraemUNet,
 @torch.inference_mode()
 def _score_one_pass(net_r, net_d, x: torch.Tensor,
                      cfg: "RunConfig") -> torch.Tensor:
-    """Returns per-pixel anomaly probability at the input resolution.
+    """Per-pixel anomaly probability at the input resolution.
     Shape (B, H, W) on the configured device."""
     use_amp = (cfg.device.type == "cuda" and cfg.amp)
     with torch.amp.autocast("cuda", enabled=use_amp):
@@ -664,6 +697,10 @@ def _score_records(net_r, net_d, records, cfg, load_masks):
 
 def run_one_class(cls, records_all, cfg, run_dir, device,
                    local_saver=None) -> dict:
+    """If `local_saver` is given, every local-val (score_map, gt_mask)
+    pair is appended to it along with image_path=r.path so the stacker
+    can train on the raw pixel predictions AND parse views for the
+    cross-view feature family."""
     hr(f"CLASS {cls}", "─")
     t_start = time.time()
     train_good = [r for r in records_all
@@ -709,6 +746,9 @@ def run_one_class(cls, records_all, cfg, run_dir, device,
             ap = pixel_average_precision(sm_smooth, gts[r_idx])
             by_anom[r.anomaly_type or "?"].append(ap)
             if local_saver is not None:
+                # image_path is REQUIRED for the v4 stacker's view
+                # parsing (PATH_VIEW_RE on Path(p).name → sample_id,
+                # view_idx). Cross-view features depend on this.
                 local_saver.add(
                     cls=cls,
                     anomaly_type=r.anomaly_type or "unknown",
@@ -789,7 +829,7 @@ class RunConfig:
     data_root: Path
     report_dir: Path
     input_size: int = 256
-    unet_base: int = 32          # base channels; total params ~ base^2
+    unet_base: int = 32          # base channels; ~63M total params at 32
     # Training
     epochs: int = 200
     total_iters: int | None = 2500
@@ -817,6 +857,11 @@ class RunConfig:
 
 
 def make_run_id(cfg: RunConfig) -> str:
+    """Run-dir name starts with `<timestamp>_draem_...`. The
+    xgboost_stacker's detect_model_family can be extended to map
+    "draem" → "draem" via one line in MODEL_FAMILY_PATTERNS; without
+    that change, the family is reported as "unknown" which still
+    works (small_cc default 0 in v4/v5)."""
     fp = json.dumps({
         "method": "draem",
         "input_size": cfg.input_size,
@@ -830,7 +875,7 @@ def make_run_id(cfg: RunConfig) -> str:
         "tta": cfg.tta,
         "smooth_sigma": cfg.smooth_sigma,
         "seed": cfg.seed,
-        "v": 1,
+        "v": "1.1",
     }, sort_keys=True).encode("utf-8")
     digest = hashlib.sha1(fp).hexdigest()[:6]
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -855,9 +900,8 @@ def main():
     ap.add_argument("--input-size", type=int, default=256,
                     help="Must be multiple of 64 (six 2x downsamples in U-Net).")
     ap.add_argument("--unet-base", type=int, default=32,
-                    help="Base channel count for both U-Nets. Default 32 "
-                         "-> ~63M total params. 24 -> ~35M (cheaper). "
-                         "16 -> ~16M (small ablation).")
+                    help="Base channel count for both U-Nets. 32 → ~63M "
+                         "total params. 24 → ~35M (cheaper). 16 → ~16M.")
     # Training
     ap.add_argument("--epochs", type=int, default=200)
     ap.add_argument("--total-iters", type=int, default=2500,
@@ -868,9 +912,9 @@ def main():
     ap.add_argument("--weight-decay", type=float, default=0.0)
     ap.add_argument("--anomaly-prob", type=float, default=0.5,
                     help="Fraction of training samples where a synthetic "
-                         "defect is added. Default 0.5 sees both clean "
-                         "and corrupted batches, important so D doesn't "
-                         "collapse to always-predicting-anomaly.")
+                         "defect is added. 0.5 sees both clean and "
+                         "corrupted batches — prevents D from collapsing "
+                         "to always-predict-anomaly.")
     ap.add_argument("--focal-gamma", type=float, default=2.0)
     ap.add_argument("--focal-alpha", type=float, default=0.5,
                     help="Weight on the positive (anomaly) class in the "
@@ -889,7 +933,10 @@ def main():
     ap.add_argument("--skip-submission", action="store_true")
     ap.add_argument("--save-checkpoints", action="store_true")
     ap.add_argument("--no-zip", action="store_true")
-    ap.add_argument("--no-save-local-preds", action="store_true")
+    ap.add_argument("--no-save-local-preds", action="store_true",
+                    help="Disable saving local_predictions.npz "
+                         "(default: save). Disabling this breaks "
+                         "downstream stacker training.")
     ap.add_argument("--run-tag", default="")
     args = ap.parse_args()
 
@@ -927,7 +974,7 @@ def main():
     run_dir.mkdir(parents=True, exist_ok=True)
 
     with tee_to(run_dir / "run_log.txt"):
-        hr(f"DRAEM — RUN {run_id}", "█")
+        hr(f"DRAEM v1.1 — RUN {run_id}", "█")
         print(f"  data_root        : {cfg.data_root}")
         print(f"  run_dir          : {run_dir}")
         print(f"  input_size       : {cfg.input_size}")
@@ -1027,7 +1074,7 @@ def main():
             "runtime_min": f"{(time.time() - t_total) / 60:.1f}",
             "submission_path": str(run_dir / "submission.zip")
                                 if not cfg.skip_submission else "",
-            "notes": (f"draem base{cfg.unet_base} "
+            "notes": (f"draem v1.1 base{cfg.unet_base} "
                       f"anomaly_prob={cfg.anomaly_prob} "
                       f"focal_alpha={cfg.focal_alpha} "
                       f"{'it' + str(cfg.total_iters) if cfg.total_iters else 'e' + str(cfg.epochs)} "

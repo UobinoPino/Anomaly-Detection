@@ -35,7 +35,7 @@ uv run python draem_baseline.py \
     --data-root  "$DATA" \
     --report-dir "$OUT" \
     --input-size 256 \
-    --unet-base 32 \
+    --unet-base 16 \
     --total-iters 2500 \
     --batch-size 8 \
     --lr 5e-5 \
