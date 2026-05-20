@@ -76,7 +76,7 @@ from local_preds_saver import LocalPredSaver
 # ─────────────────────────────────────────────────────────────────────────────
 # Defaults — override on the CLI
 # ─────────────────────────────────────────────────────────────────────────────
-PROJECT_ROOT = Path("/work/u10813429/anomaly-detection")
+PROJECT_ROOT = Path("/workspace/anomaly-detection")
 DEFAULT_DATA_ROOT  = PROJECT_ROOT / "data"
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "baseline_out"
 
@@ -539,6 +539,7 @@ class PatchCoreConfig:
     num_workers: int = 2
     device: str = "cuda"
     seed: int = 0
+    train_patch_keep: float = 1.0
 
 
 class PatchCore:
@@ -557,33 +558,84 @@ class PatchCore:
         self.feature_hw: tuple[int, int] | None = None
         self.feature_dim: int | None = None
 
+    # @torch.inference_mode()
+    # def _extract(self, loader: DataLoader) -> torch.Tensor:
+    #     feats_list = []
+    #     n = 0
+    #     last_log = 0
+    #     for x, _, _ in loader:
+    #         bs = x.shape[0]
+    #         x = x.to(self.device, non_blocking=True)
+    #         maps = self.extractor(x, layers=self.cfg.feature_layers)
+    #         pf = patchify_and_combine(maps,
+    #                                    patch_size=self.cfg.patch_size,
+    #                                    target_layer=self.target_layer)
+    #         if self.feature_hw is None:
+    #             P = pf.shape[1]
+    #             H = W = int(math.isqrt(P))
+    #             self.feature_hw = (H, W)
+    #             self.feature_dim = pf.shape[2]
+    #         # pf = pf.reshape(-1, pf.shape[-1]).detach().cpu()
+    #         # feats_list.append(pf)
+    #         pf = pf.reshape(-1, pf.shape[-1]).detach()
+    #         if self.cfg.coreset_fp16:
+    #             pf = pf.half()
+    #         feats_list.append(pf.cpu())
+    #
+    #         del x, maps, pf
+    #         n += bs
+    #         if n - last_log >= 256:
+    #             last_log = n
+    #             print(f"      extracted features from {n} images "
+    #                   f"(feat dim={self.feature_dim}, "
+    #                   f"patches/img={self.feature_hw[0] * self.feature_hw[1]})",
+    #                   flush=True)
+    #     return torch.cat(feats_list, dim=0)
+
     @torch.inference_mode()
     def _extract(self, loader: DataLoader) -> torch.Tensor:
         feats_list = []
         n = 0
         last_log = 0
+        keep_frac = self.cfg.train_patch_keep
+        subsample_gen = None
+        if keep_frac < 1.0:
+            subsample_gen = torch.Generator(device=self.device).manual_seed(
+                self.cfg.seed + 12345)
         for x, _, _ in loader:
             bs = x.shape[0]
             x = x.to(self.device, non_blocking=True)
             maps = self.extractor(x, layers=self.cfg.feature_layers)
             pf = patchify_and_combine(maps,
-                                       patch_size=self.cfg.patch_size,
-                                       target_layer=self.target_layer)
+                                      patch_size=self.cfg.patch_size,
+                                      target_layer=self.target_layer)
             if self.feature_hw is None:
                 P = pf.shape[1]
                 H = W = int(math.isqrt(P))
                 self.feature_hw = (H, W)
                 self.feature_dim = pf.shape[2]
-            pf = pf.reshape(-1, pf.shape[-1]).detach().cpu()
-            feats_list.append(pf)
+            # NEW: per-image random patch subsample (standard PatchCore feature sampling)
+            if keep_frac < 1.0:
+                P_full = pf.shape[1]
+                n_keep = max(1, int(P_full * keep_frac))
+                idx = torch.randperm(P_full, generator=subsample_gen,
+                                     device=self.device)[:n_keep]
+                pf = pf[:, idx, :]
+            pf = pf.reshape(-1, pf.shape[-1]).detach()
+            if self.cfg.coreset_fp16:
+                pf = pf.half()
+            feats_list.append(pf.cpu())
             del x, maps, pf
             n += bs
             if n - last_log >= 256:
                 last_log = n
+                kept_per_img = (self.feature_hw[0] * self.feature_hw[1]
+                                if keep_frac >= 1.0
+                                else int(self.feature_hw[0] * self.feature_hw[1] * keep_frac))
                 print(f"      extracted features from {n} images "
                       f"(feat dim={self.feature_dim}, "
-                      f"patches/img={self.feature_hw[0] * self.feature_hw[1]})",
-                      flush=True)
+                      f"patches/img={self.feature_hw[0] * self.feature_hw[1]}, "
+                      f"kept/img={kept_per_img})", flush=True)
         return torch.cat(feats_list, dim=0)
 
     def fit(self, train_good_records: list[ImageRecord]) -> None:
@@ -942,6 +994,7 @@ class RunConfig:
     agreement_thresh: float = 0.90
     # bookkeeping
     seed: int = 0
+    train_patch_keep: float = 1.0
     only_classes: list[str] = field(default_factory=list)
     skip_eval: bool = False
     skip_submission: bool = False
@@ -1154,6 +1207,7 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
         project_chunk=cfg.project_chunk,
         num_workers=cfg.num_workers,
         seed=cfg.seed,
+        train_patch_keep=cfg.train_patch_keep,
     )
     pc = PatchCore(pc_cfg)
     pc.fit(train_good)
@@ -1318,6 +1372,11 @@ def main():
     ap.add_argument("--input-size", type=int, default=224)
     ap.add_argument("--coreset-frac", type=float, default=0.10)
     ap.add_argument("--coreset-fp16", action="store_true")
+    ap.add_argument("--train-patch-keep", type=float, default=1.0,
+                    help="Fraction of patches kept per training image before "
+                         "coreset (default: 1.0 = keep all). Standard PatchCore "
+                         "uses 0.10–0.25. Saves CPU RAM and speeds up coreset "
+                         "with negligible AP impact.")
     ap.add_argument("--coreset-algo", default="minibatch",
                     choices=["exact", "minibatch"])
     ap.add_argument("--coreset-batch", type=int, default=64)
@@ -1430,6 +1489,7 @@ def main():
         agreement_pct=args.agreement_pct,
         agreement_thresh=args.agreement_thresh,
         seed=args.seed, only_classes=args.only_classes,
+        train_patch_keep=args.train_patch_keep,
         skip_eval=args.skip_eval, skip_submission=args.skip_submission,
         save_memory_banks=not args.no_save_banks,
         zip_submission=not args.no_zip,

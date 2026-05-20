@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Spacepresso — XGBoost stacker v3, mirrored to your existing 12-method bundle.
-# Drop next to xgboost_stacker_v3.py and run.
+# Spacepresso — XGBoost stacker v6, 14-method bundle.
+# Memory-efficient successor to v3/v5; preserves their CLI.
 
 set -euo pipefail
 
-ROOT=/work/u10813429/anomaly-detection
+ROOT=/workspace/anomaly-detection
 RUNS_DIR=$ROOT/baseline_out/runs
 DATA=$ROOT/data
-STACKER=$ROOT/xgboost_stacker_v5.py
+STACKER=$ROOT/xgboost_stacker_v6.py
+
+# Cache dir (v6).  Stores: aligned val, decoded test (uint8), rank-normed
+# test (uint16).  Keyed on file mtimes + small-cc spec — safe to share
+# across runs.  Delete to force a clean rebuild.
+CACHE=$ROOT/baseline_out/stacker_cache
 
 # Updated experiment paths
 EXP2=$RUNS_DIR/20260515-093627_wrn50_L23_T2_in224_cs05_mb64_exp2-coreset10_979f46
@@ -32,6 +37,8 @@ for D in "$EXP2" "$EXP3" "$EXP4" "$EXP5" "$EXP6" "$EXP7" "$EXP8C" "$EXP8D" \
     [[ -f "$D/local_predictions.npz" ]] || { echo "missing $D/local_predictions.npz"; exit 1; }
 done
 
+mkdir -p "$CACHE"
+
 COMMON_ARGS=(
     --runs
         "$EXP2/submission.csv"  "$EXP3/submission.csv"  "$EXP4/submission.csv"
@@ -50,36 +57,38 @@ COMMON_ARGS=(
     --data-root "$DATA"
     --seed 0
     --neg-per-pos 30
+    --cache-dir "$CACHE"
 )
 
 TS=$(date +%Y%m%d-%H%M%S)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# RUN V3-A — quick smoke test: all v3 fixes ON, no Optuna, no calibration.
-# Runtime: similar to v2 RUN A.
+# RUN V6-A — smoke test: v6 defaults (uint16 storage, per-class lifecycle,
+# drop-decoded during fusion).  No Optuna, no calibration.
+# First run: warms the cache.  Subsequent runs skip decode + rank-norm.
 # ─────────────────────────────────────────────────────────────────────────────
-echo "RUN V5-A — v5 fixes, no tuning, no calibration"
-OUT_A=$RUNS_DIR/${TS}_stacker_xgb_v5_A3
-uv run python "$STACKER" \
-    "${COMMON_ARGS[@]}" \
-    --rank-norm per-class \
-    --tune-mode none \
-    --calibrate none \
-    --out "$OUT_A/submission.csv" \
-    --run-tag "stacker-xgb-v5-AA3"
+#echo "RUN V6-A — v6 defaults, no tuning, no calibration"
+#OUT_A=$RUNS_DIR/${TS}_stacker_xgb_v6
+#uv run python "$STACKER" \
+#    "${COMMON_ARGS[@]}" \
+#    --rank-norm per-class-view \
+#    --tune-mode none \
+#    --calibrate none \
+#    --out "$OUT_A/submission.csv" \
+#    --run-tag "stacker-xgb-v6"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RUN V3-B — v3 + per-class Optuna under the pooled CV objective.
 # ─────────────────────────────────────────────────────────────────────────────
-#echo "RUN V5-B — v5 fixes + per-class tuning"
-#OUT_B=$RUNS_DIR/${TS}_stacker_xgb_v5_B
-#uv run python "$STACKER" \
-#    "${COMMON_ARGS[@]}" \
-#    --rank-norm per-class \
-#    --tune-mode per-class \
-#    --n-trials 100 \
-#    --tune-cv loao \
-#    --tune-timeout-min 8 \
-#    --calibrate none \
-#    --out "$OUT_B/submission.csv" \
-#    --run-tag "stacker-xgb-v5-BB"
+echo "RUN V6-B — v5 fixes + per-class tuning"
+OUT_B=$RUNS_DIR/${TS}_stacker_xgb_v6_B
+uv run python "$STACKER" \
+    "${COMMON_ARGS[@]}" \
+    --rank-norm per-class \
+    --tune-mode per-class \
+    --n-trials 100 \
+    --tune-cv loio \
+    --tune-timeout-min 15 \
+    --calibrate none \
+    --out "$OUT_B/submission.csv" \
+    --run-tag "stacker-xgb-v6"

@@ -25,8 +25,8 @@
 
 set -euo pipefail
 # hello
-DATA=/work/u10813429/anomaly-detection/data
-OUT=/work/u10813429/anomaly-detection/baseline_out
+DATA=/workspace/anomaly-detection/data
+OUT=/workspace/anomaly-detection/baseline_out
 
 # ── EXPERIMENT 15 — FastFlow paper default ──────────────────────────────────
 #echo "================================================================"

@@ -54,31 +54,31 @@ TS=$(date +%Y%m%d-%H%M%S)
 # RUN V3-A — quick smoke test: all v3 fixes ON, no Optuna, no calibration.
 # Runtime: similar to v2 RUN A.
 # ─────────────────────────────────────────────────────────────────────────────
-#echo "RUN V3-A — v3 fixes, no tuning, no calibration"
-#OUT_A=$RUNS_DIR/${TS}_stacker_xgb_v3_A
-#uv run python "$STACKER" \
-#    "${COMMON_ARGS[@]}" \
-#    --rank-norm per-class \
-#    --tune-mode none \
-#    --calibrate none \
-#    --out "$OUT_A/submission.csv" \
-#    --run-tag "stacker-xgb-v3-AA"
+echo "RUN V3-A — v3 fixes, no tuning, no calibration"
+OUT_A=$RUNS_DIR/${TS}_stacker_xgb_v3_A
+uv run python "$STACKER" \
+    "${COMMON_ARGS[@]}" \
+    --rank-norm per-class \
+    --tune-mode none \
+    --calibrate none \
+    --out "$OUT_A/submission.csv" \
+    --run-tag "stacker-xgb-v3-AA"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RUN V3-B — v3 + per-class Optuna under the pooled CV objective.
 # ─────────────────────────────────────────────────────────────────────────────
-echo "RUN V3-B — v3 fixes + per-class tuning"
-OUT_B=$RUNS_DIR/${TS}_stacker_xgb_v3_B
-uv run python "$STACKER" \
-    "${COMMON_ARGS[@]}" \
-    --rank-norm per-class \
-    --tune-mode per-class \
-    --n-trials 100 \
-    --tune-cv loao \
-    --tune-timeout-min 30 \
-    --calibrate none \
-    --out "$OUT_B/submission.csv" \
-    --run-tag "stacker-xgb-v3-BB"
+#echo "RUN V3-B — v3 fixes + per-class tuning"
+#OUT_B=$RUNS_DIR/${TS}_stacker_xgb_v3_B
+#uv run python "$STACKER" \
+#    "${COMMON_ARGS[@]}" \
+#    --rank-norm per-class \
+#    --tune-mode per-class \
+#    --n-trials 100 \
+#    --tune-cv loao \
+#    --tune-timeout-min 30 \
+#    --calibrate none \
+#    --out "$OUT_B/submission.csv" \
+#    --run-tag "stacker-xgb-v3-BB"
 
 ## ─────────────────────────────────────────────────────────────────────────────
 ## RUN V3-C — v3 + tuning + isotonic calibration.

@@ -91,7 +91,7 @@ except Exception:
 # ─────────────────────────────────────────────────────────────────────────────
 # Defaults
 # ─────────────────────────────────────────────────────────────────────────────
-PROJECT_ROOT = Path("/mnt/c/Users/Francoo/PycharmProjects/anomaly-detection")
+PROJECT_ROOT = Path("/workspace/anomaly-detection")
 DEFAULT_DATA_ROOT  = PROJECT_ROOT / "data"
 DEFAULT_CSV        = PROJECT_ROOT / "data" / "anomaly_descriptions.csv"
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "analysis_out"

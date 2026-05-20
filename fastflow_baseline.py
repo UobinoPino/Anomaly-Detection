@@ -151,7 +151,7 @@ from patchcore_baseline_v2 import (
 from local_preds_saver import LocalPredSaver
 
 
-PROJECT_ROOT = Path("/work/u10813429/anomaly-detection")
+PROJECT_ROOT = Path("/workspace/anomaly-detection")
 DEFAULT_DATA_ROOT  = PROJECT_ROOT / "data"
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "baseline_out"
 
