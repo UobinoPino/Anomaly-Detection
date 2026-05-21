@@ -1,0 +1,246 @@
+
+██████████████████████████████████████████████████████████████████████████████
+  ANOMALYDINO — RUN 20260521-161953_adino_dnv2s14r_b11_in392_k1_fg75_tta-hvflip_adino-paper-dnv2reg_cd8663
+██████████████████████████████████████████████████████████████████████████████
+  backbone         : dinov2_vits14_reg
+  block_idx        : 11 (explicit)
+  input_size       : 392
+  knn_k            : 1
+  foreground_mask  : True  (keep_pct=75.0)
+  bank_dtype       : fp16
+  tta              : hvflip    smooth_sigma=1.5
+  device           : cuda
+                    NVIDIA L4, 23.7 GB
+
+  resolved block_idx=11  embed_dim=384
+
+  running on 8 class(es): class_01, class_02, class_03, class_04, class_05, class_06, class_07, class_08
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_01
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2600  train_anomaly=25  test=465
+    [16:20:02] extracted 2038400 patches from 2600 train_good imgs (7.6s)  feature_hw=(28, 28)  C=384
+    foreground mask: keep_pct=75.0%  abs(PC1) threshold=0.2804  keeping 1528800/2038400 patches
+    bank ready  shape=(1528800, 384)  dtype=torch.float16  (1174.1 MB on GPU)
+
+--- local validation  tta=hvflip  k=1  fg_mask=True ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.6863 ± 0.3542
+    anomaly_02            5          0.5470 ± 0.2811
+    anomaly_03            5          0.1651 ± 0.3029
+    anomaly_04            5          0.4626 ± 0.3531
+    anomaly_05            5          0.1584 ± 0.3168
+    >>> class class_01 mean pixel-AP: 0.4039
+
+--- scoring 465 test images  tta=hvflip ---
+      scored 200/465
+      scored 400/465
+  class class_01 done in 2.3 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_02
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2135  train_anomaly=30  test=800
+    [16:22:18] extracted 1673840 patches from 2135 train_good imgs (6.2s)  feature_hw=(28, 28)  C=384
+    foreground mask: keep_pct=75.0%  abs(PC1) threshold=0.1411  keeping 1255380/1673840 patches
+    bank ready  shape=(1255380, 384)  dtype=torch.float16  (964.1 MB on GPU)
+
+--- local validation  tta=hvflip  k=1  fg_mask=True ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.8693 ± 0.0750
+    anomaly_02            5          0.7322 ± 0.3672
+    anomaly_03            5          0.5217 ± 0.1509
+    anomaly_04            5          0.4917 ± 0.1433
+    anomaly_05            5          0.0467 ± 0.0934
+    anomaly_06            5          0.1623 ± 0.3247
+    >>> class class_02 mean pixel-AP: 0.4707
+
+--- scoring 800 test images  tta=hvflip ---
+      scored 200/800
+      scored 400/800
+      scored 600/800
+      scored 800/800
+  class class_02 done in 3.2 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_03
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2520  train_anomaly=20  test=790
+    [16:25:29] extracted 1975680 patches from 2520 train_good imgs (7.6s)  feature_hw=(28, 28)  C=384
+    foreground mask: keep_pct=75.0%  abs(PC1) threshold=0.2290  keeping 1481760/1975680 patches
+    bank ready  shape=(1481760, 384)  dtype=torch.float16  (1138.0 MB on GPU)
+
+--- local validation  tta=hvflip  k=1  fg_mask=True ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.0919 ± 0.0856
+    anomaly_02            5          0.0275 ± 0.0118
+    anomaly_03            5          0.2548 ± 0.3121
+    anomaly_04            5          0.1393 ± 0.2786
+    >>> class class_03 mean pixel-AP: 0.1284
+
+--- scoring 790 test images  tta=hvflip ---
+      scored 200/790
+      scored 400/790
+      scored 600/790
+  class class_03 done in 3.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_04
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2585  train_anomaly=25  test=745
+    [16:29:07] extracted 2026640 patches from 2585 train_good imgs (7.7s)  feature_hw=(28, 28)  C=384
+    foreground mask: keep_pct=75.0%  abs(PC1) threshold=0.2468  keeping 1519980/2026640 patches
+    bank ready  shape=(1519980, 384)  dtype=torch.float16  (1167.3 MB on GPU)
+
+--- local validation  tta=hvflip  k=1  fg_mask=True ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.3917 ± 0.3296
+    anomaly_02            5          0.4980 ± 0.2831
+    anomaly_03            5          0.4046 ± 0.2068
+    anomaly_04            5          0.3305 ± 0.2034
+    anomaly_05            5          0.3887 ± 0.4112
+    >>> class class_04 mean pixel-AP: 0.4027
+
+--- scoring 745 test images  tta=hvflip ---
+      scored 200/745
+      scored 400/745
+      scored 600/745
+  class class_04 done in 3.5 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_05
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2640  train_anomaly=30  test=225
+    [16:32:40] extracted 2069760 patches from 2640 train_good imgs (7.9s)  feature_hw=(28, 28)  C=384
+    foreground mask: keep_pct=75.0%  abs(PC1) threshold=0.2619  keeping 1552320/2069760 patches
+    bank ready  shape=(1552320, 384)  dtype=torch.float16  (1192.2 MB on GPU)
+
+--- local validation  tta=hvflip  k=1  fg_mask=True ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1798 ± 0.3596
+    anomaly_02            5          0.4507 ± 0.2702
+    anomaly_03            5          0.3789 ± 0.3127
+    anomaly_04            5          0.5348 ± 0.4369
+    anomaly_05            5          0.3508 ± 0.2628
+    anomaly_06            5          0.2066 ± 0.3048
+    >>> class class_05 mean pixel-AP: 0.3503
+
+--- scoring 225 test images  tta=hvflip ---
+      scored 200/225
+  class class_05 done in 1.3 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_06
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2335  train_anomaly=35  test=1010
+    [16:33:57] extracted 1830640 patches from 2335 train_good imgs (7.1s)  feature_hw=(28, 28)  C=384
+    foreground mask: keep_pct=75.0%  abs(PC1) threshold=0.2631  keeping 1372980/1830640 patches
+    bank ready  shape=(1372980, 384)  dtype=torch.float16  (1054.4 MB on GPU)
+
+--- local validation  tta=hvflip  k=1  fg_mask=True ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9518 ± 0.0124
+    anomaly_02            5          0.1373 ± 0.1203
+    anomaly_03            5          0.3992 ± 0.2647
+    anomaly_04            5          0.4563 ± 0.2647
+    anomaly_05            5          0.7204 ± 0.3608
+    anomaly_06            5          0.4306 ± 0.2275
+    anomaly_07            5          0.9858 ± 0.0059
+    >>> class class_06 mean pixel-AP: 0.5830
+
+--- scoring 1010 test images  tta=hvflip ---
+      scored 200/1010
+      scored 400/1010
+      scored 600/1010
+      scored 800/1010
+      scored 1000/1010
+  class class_06 done in 4.3 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_07
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2145  train_anomaly=35  test=915
+    [16:38:16] extracted 1681680 patches from 2145 train_good imgs (6.6s)  feature_hw=(28, 28)  C=384
+    foreground mask: keep_pct=75.0%  abs(PC1) threshold=0.2406  keeping 1261260/1681680 patches
+    bank ready  shape=(1261260, 384)  dtype=torch.float16  (968.6 MB on GPU)
+
+--- local validation  tta=hvflip  k=1  fg_mask=True ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7621 ± 0.3757
+    anomaly_02            5          0.3229 ± 0.2744
+    anomaly_03            5          0.7305 ± 0.1154
+    anomaly_04            5          0.1850 ± 0.1090
+    anomaly_05            5          0.4615 ± 0.2539
+    anomaly_06            5          0.1151 ± 0.0637
+    anomaly_07            5          0.7539 ± 0.1420
+    >>> class class_07 mean pixel-AP: 0.4759
+
+--- scoring 915 test images  tta=hvflip ---
+      scored 200/915
+      scored 400/915
+      scored 600/915
+      scored 800/915
+  class class_07 done in 3.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_08
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2045  train_anomaly=35  test=960
+    [16:41:54] extracted 1603280 patches from 2045 train_good imgs (6.3s)  feature_hw=(28, 28)  C=384
+    foreground mask: keep_pct=75.0%  abs(PC1) threshold=0.1615  keeping 1202460/1603280 patches
+    bank ready  shape=(1202460, 384)  dtype=torch.float16  (923.5 MB on GPU)
+
+--- local validation  tta=hvflip  k=1  fg_mask=True ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9332 ± 0.0408
+    anomaly_02            5          0.2743 ± 0.0889
+    anomaly_03            5          0.9716 ± 0.0189
+    anomaly_04            5          0.1954 ± 0.3908
+    anomaly_05            5          0.1497 ± 0.2993
+    anomaly_06            5          0.7296 ± 0.0661
+    anomaly_07            5          0.0930 ± 0.1861
+    >>> class class_08 mean pixel-AP: 0.4781
+
+--- scoring 960 test images  tta=hvflip ---
+      scored 200/960
+      scored 400/960
+      scored 600/960
+      scored 800/960
+  class class_08 done in 3.6 min
+[local_preds_saver] saved 235 predictions (392x392, ~10.02% positive pixels)
+[local_preds_saver]   score range: [0.0129, 0.6109]  (stored as-is, no clipping)
+[local_preds_saver]   wrote -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-161953_adino_dnv2s14r_b11_in392_k1_fg75_tta-hvflip_adino-paper-dnv2reg_cd8663/local_predictions.npz
+
+==============================================================================
+  LOCAL VALIDATION SUMMARY
+==============================================================================
+  class        mean pixel-AP   time (min)
+  class_01            0.4039          2.3
+  class_02            0.4707          3.2
+  class_03            0.1284          3.6
+  class_04            0.4027          3.5
+  class_05            0.3503          1.3
+  class_06            0.5830          4.3
+  class_07            0.4759          3.6
+  class_08            0.4781          3.6
+  OVERALL             0.4116
+  saved per-(class, anomaly_type) AP -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-161953_adino_dnv2s14r_b11_in392_k1_fg75_tta-hvflip_adino-paper-dnv2reg_cd8663/local_eval.csv
+
+==============================================================================
+  SUBMISSION
+==============================================================================
+    saved 5910 test predictions (224x224, range [0.00723, 0.6303]) -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-161953_adino_dnv2s14r_b11_in392_k1_fg75_tta-hvflip_adino-paper-dnv2reg_cd8663/test_predictions.npz
+
+--- calibrating scores and writing submission.csv ---
+    global score calibration  lo=0.0238  hi=0.3708
+    wrote 5910 rows -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-161953_adino_dnv2s14r_b11_in392_k1_fg75_tta-hvflip_adino-paper-dnv2reg_cd8663/submission.csv
+    zipped         -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-161953_adino_dnv2s14r_b11_in392_k1_fg75_tta-hvflip_adino-paper-dnv2reg_cd8663/submission.zip
+
+  Upload: /work/u10813429/anomaly-detection/baseline_out/runs/20260521-161953_adino_dnv2s14r_b11_in392_k1_fg75_tta-hvflip_adino-paper-dnv2reg_cd8663/submission.zip
+
+  ablation row appended -> /work/u10813429/anomaly-detection/baseline_out/ablation_master.csv
+
+██████████████████████████████████████████████████████████████████████████████
+  DONE — run_id=20260521-161953_adino_dnv2s14r_b11_in392_k1_fg75_tta-hvflip_adino-paper-dnv2reg_cd8663
+██████████████████████████████████████████████████████████████████████████████

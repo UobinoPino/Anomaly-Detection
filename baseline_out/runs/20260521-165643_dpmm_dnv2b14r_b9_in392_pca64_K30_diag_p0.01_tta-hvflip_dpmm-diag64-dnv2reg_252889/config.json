@@ -1,0 +1,29 @@
+{
+  "data_root": "/work/u10813429/anomaly-detection/data",
+  "report_dir": "/work/u10813429/anomaly-detection/baseline_out",
+  "backbone": "dinov2_vitb14_reg",
+  "block_indices": [
+    9
+  ],
+  "input_size": 392,
+  "pca_dim": 64,
+  "pca_fit_subsample": 50000,
+  "dpmm_fit_subsample": 30000,
+  "max_components": 30,
+  "covariance_type": "diag",
+  "weight_conc_prior": 0.01,
+  "max_iter": 200,
+  "batch_size": 8,
+  "score_batch_size": 8,
+  "num_workers": 8,
+  "amp": true,
+  "smooth_sigma": 1.5,
+  "tta": "hvflip",
+  "seed": 0,
+  "only_classes": [],
+  "skip_eval": false,
+  "skip_submission": false,
+  "save_models": false,
+  "zip_submission": true,
+  "run_tag": "dpmm-diag64-dnv2reg"
+}

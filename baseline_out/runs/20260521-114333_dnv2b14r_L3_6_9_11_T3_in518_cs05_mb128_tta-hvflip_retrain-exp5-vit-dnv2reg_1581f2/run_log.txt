@@ -1,0 +1,542 @@
+
+██████████████████████████████████████████████████████████████████████████████
+  PATCHCORE v8 (DINOv2/v3) — RUN 20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2
+██████████████████████████████████████████████████████████████████████████████
+  data_root        : /workspace/anomaly-detection/data
+  run_dir          : /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2
+  backbone         : dinov2_vitb14_reg
+  family / patch   : DINOv2-reg / 14
+  feature_layers   : [3, 6, 9, 11]
+  target_layer     : 3
+  input_size       : 518
+  coreset_frac     : 5.0%  coreset_fp16=True  knn_k=9
+  coreset_algo     : minibatch  (batch=128)
+  memory_dtype     : fp16
+  tta              : hvflip
+  multiview        : none
+  device           : cuda
+                    NVIDIA GeForce RTX 4090, 25.3 GB
+
+  running on 8 class(es): class_01, class_02, class_03, class_04, class_05, class_06, class_07, class_08
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_01
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2600  train_anomaly=25  test=465
+    [11:43:42] extracting train/good features (2600 images, input_size=518, backbone=dinov2_vitb14_reg, layers=[3, 6, 9, 11], target_layer=3)...
+      extracted features from 256 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 512 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 768 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1024 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1280 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1536 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1792 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2048 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2304 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2560 images (feat dim=3072, patches/img=1369, kept/img=1369)
+    -> 3559400 patch features (fp16, CPU; 21.87 GB)
+    [11:44:21] greedy coreset [minibatch (batch_size=128)]: selecting 177970 of 3559400 patches (5.0%)
+      projecting features   1048576/3559400  ( 29.5%)  elapsed=0.5s
+      projecting features   2097152/3559400  ( 58.9%)  elapsed=1.1s
+      projecting features   3145728/3559400  ( 88.4%)  elapsed=1.6s
+      projecting features   3559400/3559400  (100.0%)  elapsed=1.8s
+      projected 3559400 features to 32-d on GPU in 1.8s (455.6 MB on GPU)
+      coreset (minibatch b=128): 8833/177970 (  5.0%)  max-min-dist=0.3258  round=69/1391  elapsed=1.5s
+      coreset (minibatch b=128): 17665/177970 (  9.9%)  max-min-dist=0.2935  round=138/1391  elapsed=2.7s
+      coreset (minibatch b=128): 26497/177970 ( 14.9%)  max-min-dist=0.2768  round=207/1391  elapsed=3.9s
+      coreset (minibatch b=128): 35329/177970 ( 19.9%)  max-min-dist=0.2656  round=276/1391  elapsed=5.1s
+      coreset (minibatch b=128): 44161/177970 ( 24.8%)  max-min-dist=0.2571  round=345/1391  elapsed=6.3s
+      coreset (minibatch b=128): 52993/177970 ( 29.8%)  max-min-dist=0.2503  round=414/1391  elapsed=7.5s
+      coreset (minibatch b=128): 61825/177970 ( 34.7%)  max-min-dist=0.2445  round=483/1391  elapsed=8.7s
+      coreset (minibatch b=128): 70657/177970 ( 39.7%)  max-min-dist=0.2396  round=552/1391  elapsed=9.9s
+      coreset (minibatch b=128): 79489/177970 ( 44.7%)  max-min-dist=0.2354  round=621/1391  elapsed=11.0s
+      coreset (minibatch b=128): 88321/177970 ( 49.6%)  max-min-dist=0.2317  round=690/1391  elapsed=12.2s
+      coreset (minibatch b=128): 97153/177970 ( 54.6%)  max-min-dist=0.2283  round=759/1391  elapsed=13.4s
+      coreset (minibatch b=128): 105985/177970 ( 59.6%)  max-min-dist=0.2253  round=828/1391  elapsed=14.6s
+      coreset (minibatch b=128): 114817/177970 ( 64.5%)  max-min-dist=0.2225  round=897/1391  elapsed=15.8s
+      coreset (minibatch b=128): 123649/177970 ( 69.5%)  max-min-dist=0.2199  round=966/1391  elapsed=17.0s
+      coreset (minibatch b=128): 132481/177970 ( 74.4%)  max-min-dist=0.2175  round=1035/1391  elapsed=18.2s
+      coreset (minibatch b=128): 141313/177970 ( 79.4%)  max-min-dist=0.2152  round=1104/1391  elapsed=19.4s
+      coreset (minibatch b=128): 150145/177970 ( 84.4%)  max-min-dist=0.2131  round=1173/1391  elapsed=20.6s
+      coreset (minibatch b=128): 158977/177970 ( 89.3%)  max-min-dist=0.2112  round=1242/1391  elapsed=21.8s
+      coreset (minibatch b=128): 167809/177970 ( 94.3%)  max-min-dist=0.2093  round=1311/1391  elapsed=23.0s
+      coreset (minibatch b=128): 176641/177970 ( 99.3%)  max-min-dist=0.2075  round=1380/1391  elapsed=24.2s
+      coreset (minibatch b=128): 177970/177970 (100.0%)  max-min-dist=0.2072  round=1391/1391  elapsed=24.4s
+    [11:44:49] memory bank ready  shape=(177970, 3072)  dtype=torch.float16  (1093.4 MB on GPU)
+    saved memory bank -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/banks/class_01_memory.pt
+
+--- local validation — per-anomaly-type pixel-AP  (tta=hvflip, multiview=none) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7493 ± 0.3749
+    anomaly_02            5          0.8727 ± 0.0453
+    anomaly_03            5          0.2503 ± 0.2951
+    anomaly_04            5          0.8256 ± 0.1349
+    anomaly_05            5          0.1911 ± 0.3822
+    >>> class class_01 mean pixel-AP (avg over types): 0.5778
+
+--- scoring 465 test images (tta=hvflip, multiview=none) ---
+      scored 200/465
+      scored 400/465
+  class class_01 done in 1.9 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_02
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2135  train_anomaly=30  test=800
+    [11:45:36] extracting train/good features (2135 images, input_size=518, backbone=dinov2_vitb14_reg, layers=[3, 6, 9, 11], target_layer=3)...
+      extracted features from 256 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 512 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 768 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1024 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1280 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1536 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1792 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2048 images (feat dim=3072, patches/img=1369, kept/img=1369)
+    -> 2922815 patch features (fp16, CPU; 17.96 GB)
+    [11:46:06] greedy coreset [minibatch (batch_size=128)]: selecting 146140 of 2922815 patches (5.0%)
+      projecting features   1048576/2922815  ( 35.9%)  elapsed=0.5s
+      projecting features   2097152/2922815  ( 71.8%)  elapsed=1.1s
+      projecting features   2922815/2922815  (100.0%)  elapsed=1.5s
+      projected 2922815 features to 32-d on GPU in 1.5s (374.1 MB on GPU)
+      coreset (minibatch b=128): 7297/146140 (  5.0%)  max-min-dist=0.3516  round=57/1142  elapsed=0.8s
+      coreset (minibatch b=128): 14593/146140 ( 10.0%)  max-min-dist=0.3138  round=114/1142  elapsed=1.6s
+      coreset (minibatch b=128): 21889/146140 ( 15.0%)  max-min-dist=0.2950  round=171/1142  elapsed=2.4s
+      coreset (minibatch b=128): 29185/146140 ( 20.0%)  max-min-dist=0.2826  round=228/1142  elapsed=3.2s
+      coreset (minibatch b=128): 36481/146140 ( 25.0%)  max-min-dist=0.2733  round=285/1142  elapsed=4.1s
+      coreset (minibatch b=128): 43777/146140 ( 30.0%)  max-min-dist=0.2660  round=342/1142  elapsed=4.9s
+      coreset (minibatch b=128): 51073/146140 ( 34.9%)  max-min-dist=0.2599  round=399/1142  elapsed=5.7s
+      coreset (minibatch b=128): 58369/146140 ( 39.9%)  max-min-dist=0.2549  round=456/1142  elapsed=6.5s
+      coreset (minibatch b=128): 65665/146140 ( 44.9%)  max-min-dist=0.2503  round=513/1142  elapsed=7.3s
+      coreset (minibatch b=128): 72961/146140 ( 49.9%)  max-min-dist=0.2463  round=570/1142  elapsed=8.1s
+      coreset (minibatch b=128): 80257/146140 ( 54.9%)  max-min-dist=0.2427  round=627/1142  elapsed=8.9s
+      coreset (minibatch b=128): 87553/146140 ( 59.9%)  max-min-dist=0.2395  round=684/1142  elapsed=9.7s
+      coreset (minibatch b=128): 94849/146140 ( 64.9%)  max-min-dist=0.2366  round=741/1142  elapsed=10.5s
+      coreset (minibatch b=128): 102145/146140 ( 69.9%)  max-min-dist=0.2338  round=798/1142  elapsed=11.3s
+      coreset (minibatch b=128): 109441/146140 ( 74.9%)  max-min-dist=0.2313  round=855/1142  elapsed=12.2s
+      coreset (minibatch b=128): 116737/146140 ( 79.9%)  max-min-dist=0.2290  round=912/1142  elapsed=13.0s
+      coreset (minibatch b=128): 124033/146140 ( 84.9%)  max-min-dist=0.2268  round=969/1142  elapsed=13.8s
+      coreset (minibatch b=128): 131329/146140 ( 89.9%)  max-min-dist=0.2247  round=1026/1142  elapsed=14.6s
+      coreset (minibatch b=128): 138625/146140 ( 94.9%)  max-min-dist=0.2227  round=1083/1142  elapsed=15.4s
+      coreset (minibatch b=128): 145921/146140 ( 99.9%)  max-min-dist=0.2208  round=1140/1142  elapsed=16.2s
+      coreset (minibatch b=128): 146140/146140 (100.0%)  max-min-dist=0.2208  round=1142/1142  elapsed=16.2s
+    [11:46:25] memory bank ready  shape=(146140, 3072)  dtype=torch.float16  (897.9 MB on GPU)
+    saved memory bank -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/banks/class_02_memory.pt
+
+--- local validation — per-anomaly-type pixel-AP  (tta=hvflip, multiview=none) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9100 ± 0.0978
+    anomaly_02            5          0.7460 ± 0.3745
+    anomaly_03            5          0.7756 ± 0.1030
+    anomaly_04            5          0.3118 ± 0.0888
+    anomaly_05            5          0.0210 ± 0.0419
+    anomaly_06            5          0.1891 ± 0.3782
+    >>> class class_02 mean pixel-AP (avg over types): 0.4923
+
+--- scoring 800 test images (tta=hvflip, multiview=none) ---
+      scored 200/800
+      scored 400/800
+      scored 600/800
+      scored 800/800
+  class class_02 done in 1.7 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_03
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2520  train_anomaly=20  test=790
+    [11:47:18] extracting train/good features (2520 images, input_size=518, backbone=dinov2_vitb14_reg, layers=[3, 6, 9, 11], target_layer=3)...
+      extracted features from 256 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 512 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 768 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1024 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1280 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1536 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1792 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2048 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2304 images (feat dim=3072, patches/img=1369, kept/img=1369)
+    -> 3449880 patch features (fp16, CPU; 21.20 GB)
+    [11:47:55] greedy coreset [minibatch (batch_size=128)]: selecting 172494 of 3449880 patches (5.0%)
+      projecting features   1048576/3449880  ( 30.4%)  elapsed=0.5s
+      projecting features   2097152/3449880  ( 60.8%)  elapsed=1.1s
+      projecting features   3145728/3449880  ( 91.2%)  elapsed=1.6s
+      projecting features   3449880/3449880  (100.0%)  elapsed=1.7s
+      projected 3449880 features to 32-d on GPU in 1.7s (441.6 MB on GPU)
+      coreset (minibatch b=128): 8577/172494 (  5.0%)  max-min-dist=0.3371  round=67/1348  elapsed=1.1s
+      coreset (minibatch b=128): 17153/172494 (  9.9%)  max-min-dist=0.2992  round=134/1348  elapsed=2.2s
+      coreset (minibatch b=128): 25729/172494 ( 14.9%)  max-min-dist=0.2799  round=201/1348  elapsed=3.4s
+      coreset (minibatch b=128): 34305/172494 ( 19.9%)  max-min-dist=0.2669  round=268/1348  elapsed=4.5s
+      coreset (minibatch b=128): 42881/172494 ( 24.9%)  max-min-dist=0.2572  round=335/1348  elapsed=5.6s
+      coreset (minibatch b=128): 51457/172494 ( 29.8%)  max-min-dist=0.2497  round=402/1348  elapsed=6.7s
+      coreset (minibatch b=128): 60033/172494 ( 34.8%)  max-min-dist=0.2433  round=469/1348  elapsed=7.9s
+      coreset (minibatch b=128): 68609/172494 ( 39.8%)  max-min-dist=0.2379  round=536/1348  elapsed=9.0s
+      coreset (minibatch b=128): 77185/172494 ( 44.7%)  max-min-dist=0.2332  round=603/1348  elapsed=10.1s
+      coreset (minibatch b=128): 85761/172494 ( 49.7%)  max-min-dist=0.2291  round=670/1348  elapsed=11.2s
+      coreset (minibatch b=128): 94337/172494 ( 54.7%)  max-min-dist=0.2254  round=737/1348  elapsed=12.4s
+      coreset (minibatch b=128): 102913/172494 ( 59.7%)  max-min-dist=0.2220  round=804/1348  elapsed=13.5s
+      coreset (minibatch b=128): 111489/172494 ( 64.6%)  max-min-dist=0.2190  round=871/1348  elapsed=14.6s
+      coreset (minibatch b=128): 120065/172494 ( 69.6%)  max-min-dist=0.2162  round=938/1348  elapsed=15.7s
+      coreset (minibatch b=128): 128641/172494 ( 74.6%)  max-min-dist=0.2135  round=1005/1348  elapsed=16.9s
+      coreset (minibatch b=128): 137217/172494 ( 79.5%)  max-min-dist=0.2111  round=1072/1348  elapsed=18.0s
+      coreset (minibatch b=128): 145793/172494 ( 84.5%)  max-min-dist=0.2089  round=1139/1348  elapsed=19.1s
+      coreset (minibatch b=128): 154369/172494 ( 89.5%)  max-min-dist=0.2068  round=1206/1348  elapsed=20.2s
+      coreset (minibatch b=128): 162945/172494 ( 94.5%)  max-min-dist=0.2048  round=1273/1348  elapsed=21.4s
+      coreset (minibatch b=128): 171521/172494 ( 99.4%)  max-min-dist=0.2030  round=1340/1348  elapsed=22.5s
+      coreset (minibatch b=128): 172494/172494 (100.0%)  max-min-dist=0.2028  round=1348/1348  elapsed=22.6s
+    [11:48:21] memory bank ready  shape=(172494, 3072)  dtype=torch.float16  (1059.8 MB on GPU)
+    saved memory bank -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/banks/class_03_memory.pt
+
+--- local validation — per-anomaly-type pixel-AP  (tta=hvflip, multiview=none) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.4234 ± 0.2551
+    anomaly_02            5          0.2137 ± 0.2506
+    anomaly_03            5          0.2957 ± 0.3632
+    anomaly_04            5          0.1412 ± 0.2824
+    >>> class class_03 mean pixel-AP (avg over types): 0.2685
+
+--- scoring 790 test images (tta=hvflip, multiview=none) ---
+      scored 200/790
+      scored 400/790
+      scored 600/790
+  class class_03 done in 2.0 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_04
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2585  train_anomaly=25  test=745
+    [11:49:16] extracting train/good features (2585 images, input_size=518, backbone=dinov2_vitb14_reg, layers=[3, 6, 9, 11], target_layer=3)...
+      extracted features from 256 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 512 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 768 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1024 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1280 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1536 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1792 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2048 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2304 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2560 images (feat dim=3072, patches/img=1369, kept/img=1369)
+    -> 3538865 patch features (fp16, CPU; 21.74 GB)
+    [11:49:54] greedy coreset [minibatch (batch_size=128)]: selecting 176943 of 3538865 patches (5.0%)
+      projecting features   1048576/3538865  ( 29.6%)  elapsed=0.5s
+      projecting features   2097152/3538865  ( 59.3%)  elapsed=1.1s
+      projecting features   3145728/3538865  ( 88.9%)  elapsed=1.6s
+      projecting features   3538865/3538865  (100.0%)  elapsed=1.8s
+      projected 3538865 features to 32-d on GPU in 1.8s (453.0 MB on GPU)
+      coreset (minibatch b=128): 8833/176943 (  5.0%)  max-min-dist=0.3459  round=69/1383  elapsed=1.2s
+      coreset (minibatch b=128): 17665/176943 ( 10.0%)  max-min-dist=0.3078  round=138/1383  elapsed=2.4s
+      coreset (minibatch b=128): 26497/176943 ( 15.0%)  max-min-dist=0.2883  round=207/1383  elapsed=3.6s
+      coreset (minibatch b=128): 35329/176943 ( 20.0%)  max-min-dist=0.2753  round=276/1383  elapsed=4.8s
+      coreset (minibatch b=128): 44161/176943 ( 25.0%)  max-min-dist=0.2655  round=345/1383  elapsed=5.9s
+      coreset (minibatch b=128): 52993/176943 ( 29.9%)  max-min-dist=0.2578  round=414/1383  elapsed=7.1s
+      coreset (minibatch b=128): 61825/176943 ( 34.9%)  max-min-dist=0.2514  round=483/1383  elapsed=8.3s
+      coreset (minibatch b=128): 70657/176943 ( 39.9%)  max-min-dist=0.2461  round=552/1383  elapsed=9.5s
+      coreset (minibatch b=128): 79489/176943 ( 44.9%)  max-min-dist=0.2413  round=621/1383  elapsed=10.7s
+      coreset (minibatch b=128): 88321/176943 ( 49.9%)  max-min-dist=0.2372  round=690/1383  elapsed=11.9s
+      coreset (minibatch b=128): 97153/176943 ( 54.9%)  max-min-dist=0.2334  round=759/1383  elapsed=13.1s
+      coreset (minibatch b=128): 105985/176943 ( 59.9%)  max-min-dist=0.2300  round=828/1383  elapsed=14.3s
+      coreset (minibatch b=128): 114817/176943 ( 64.9%)  max-min-dist=0.2269  round=897/1383  elapsed=15.4s
+      coreset (minibatch b=128): 123649/176943 ( 69.9%)  max-min-dist=0.2240  round=966/1383  elapsed=16.6s
+      coreset (minibatch b=128): 132481/176943 ( 74.9%)  max-min-dist=0.2214  round=1035/1383  elapsed=17.8s
+      coreset (minibatch b=128): 141313/176943 ( 79.9%)  max-min-dist=0.2189  round=1104/1383  elapsed=19.0s
+      coreset (minibatch b=128): 150145/176943 ( 84.9%)  max-min-dist=0.2166  round=1173/1383  elapsed=20.2s
+      coreset (minibatch b=128): 158977/176943 ( 89.8%)  max-min-dist=0.2144  round=1242/1383  elapsed=21.4s
+      coreset (minibatch b=128): 167809/176943 ( 94.8%)  max-min-dist=0.2124  round=1311/1383  elapsed=22.6s
+      coreset (minibatch b=128): 176641/176943 ( 99.8%)  max-min-dist=0.2104  round=1380/1383  elapsed=23.8s
+      coreset (minibatch b=128): 176943/176943 (100.0%)  max-min-dist=0.2104  round=1383/1383  elapsed=23.8s
+    [11:50:21] memory bank ready  shape=(176943, 3072)  dtype=torch.float16  (1087.1 MB on GPU)
+    saved memory bank -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/banks/class_04_memory.pt
+
+--- local validation — per-anomaly-type pixel-AP  (tta=hvflip, multiview=none) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.4563 ± 0.3843
+    anomaly_02            5          0.6049 ± 0.3181
+    anomaly_03            5          0.6452 ± 0.3332
+    anomaly_04            5          0.6290 ± 0.3174
+    anomaly_05            5          0.4679 ± 0.4158
+    >>> class class_04 mean pixel-AP (avg over types): 0.5607
+
+--- scoring 745 test images (tta=hvflip, multiview=none) ---
+      scored 200/745
+      scored 400/745
+      scored 600/745
+  class class_04 done in 2.0 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_05
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2640  train_anomaly=30  test=225
+    [11:51:15] extracting train/good features (2640 images, input_size=518, backbone=dinov2_vitb14_reg, layers=[3, 6, 9, 11], target_layer=3)...
+      extracted features from 256 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 512 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 768 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1024 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1280 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1536 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1792 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2048 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2304 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2560 images (feat dim=3072, patches/img=1369, kept/img=1369)
+    -> 3614160 patch features (fp16, CPU; 22.21 GB)
+    [11:51:53] greedy coreset [minibatch (batch_size=128)]: selecting 180708 of 3614160 patches (5.0%)
+      projecting features   1048576/3614160  ( 29.0%)  elapsed=0.5s
+      projecting features   2097152/3614160  ( 58.0%)  elapsed=1.1s
+      projecting features   3145728/3614160  ( 87.0%)  elapsed=1.6s
+      projecting features   3614160/3614160  (100.0%)  elapsed=1.8s
+      projected 3614160 features to 32-d on GPU in 1.8s (462.6 MB on GPU)
+      coreset (minibatch b=128): 8961/180708 (  5.0%)  max-min-dist=0.3396  round=70/1412  elapsed=1.2s
+      coreset (minibatch b=128): 17921/180708 (  9.9%)  max-min-dist=0.3036  round=140/1412  elapsed=2.5s
+      coreset (minibatch b=128): 26881/180708 ( 14.9%)  max-min-dist=0.2847  round=210/1412  elapsed=3.7s
+      coreset (minibatch b=128): 35841/180708 ( 19.8%)  max-min-dist=0.2721  round=280/1412  elapsed=4.9s
+      coreset (minibatch b=128): 44801/180708 ( 24.8%)  max-min-dist=0.2625  round=350/1412  elapsed=6.2s
+      coreset (minibatch b=128): 53761/180708 ( 29.8%)  max-min-dist=0.2549  round=420/1412  elapsed=7.4s
+      coreset (minibatch b=128): 62721/180708 ( 34.7%)  max-min-dist=0.2487  round=490/1412  elapsed=8.6s
+      coreset (minibatch b=128): 71681/180708 ( 39.7%)  max-min-dist=0.2433  round=560/1412  elapsed=9.8s
+      coreset (minibatch b=128): 80641/180708 ( 44.6%)  max-min-dist=0.2385  round=630/1412  elapsed=11.1s
+      coreset (minibatch b=128): 89601/180708 ( 49.6%)  max-min-dist=0.2344  round=700/1412  elapsed=12.3s
+      coreset (minibatch b=128): 98561/180708 ( 54.5%)  max-min-dist=0.2306  round=770/1412  elapsed=13.5s
+      coreset (minibatch b=128): 107521/180708 ( 59.5%)  max-min-dist=0.2272  round=840/1412  elapsed=14.8s
+      coreset (minibatch b=128): 116481/180708 ( 64.5%)  max-min-dist=0.2242  round=910/1412  elapsed=16.0s
+      coreset (minibatch b=128): 125441/180708 ( 69.4%)  max-min-dist=0.2213  round=980/1412  elapsed=17.2s
+      coreset (minibatch b=128): 134401/180708 ( 74.4%)  max-min-dist=0.2186  round=1050/1412  elapsed=18.5s
+      coreset (minibatch b=128): 143361/180708 ( 79.3%)  max-min-dist=0.2162  round=1120/1412  elapsed=19.7s
+      coreset (minibatch b=128): 152321/180708 ( 84.3%)  max-min-dist=0.2139  round=1190/1412  elapsed=20.9s
+      coreset (minibatch b=128): 161281/180708 ( 89.2%)  max-min-dist=0.2117  round=1260/1412  elapsed=22.1s
+      coreset (minibatch b=128): 170241/180708 ( 94.2%)  max-min-dist=0.2097  round=1330/1412  elapsed=23.4s
+      coreset (minibatch b=128): 179201/180708 ( 99.2%)  max-min-dist=0.2078  round=1400/1412  elapsed=24.6s
+      coreset (minibatch b=128): 180708/180708 (100.0%)  max-min-dist=0.2075  round=1412/1412  elapsed=24.8s
+    [11:52:21] memory bank ready  shape=(180708, 3072)  dtype=torch.float16  (1110.3 MB on GPU)
+    saved memory bank -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/banks/class_05_memory.pt
+
+--- local validation — per-anomaly-type pixel-AP  (tta=hvflip, multiview=none) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1945 ± 0.3890
+    anomaly_02            5          0.5542 ± 0.2998
+    anomaly_03            5          0.5188 ± 0.4236
+    anomaly_04            5          0.5883 ± 0.4803
+    anomaly_05            5          0.7110 ± 0.3601
+    anomaly_06            5          0.3103 ± 0.3828
+    >>> class class_05 mean pixel-AP (avg over types): 0.4795
+
+--- scoring 225 test images (tta=hvflip, multiview=none) ---
+      scored 200/225
+  class class_05 done in 1.5 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_06
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2335  train_anomaly=35  test=1010
+    [11:52:43] extracting train/good features (2335 images, input_size=518, backbone=dinov2_vitb14_reg, layers=[3, 6, 9, 11], target_layer=3)...
+      extracted features from 256 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 512 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 768 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1024 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1280 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1536 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1792 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2048 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2304 images (feat dim=3072, patches/img=1369, kept/img=1369)
+    -> 3196615 patch features (fp16, CPU; 19.64 GB)
+    [11:53:17] greedy coreset [minibatch (batch_size=128)]: selecting 159830 of 3196615 patches (5.0%)
+      projecting features   1048576/3196615  ( 32.8%)  elapsed=0.5s
+      projecting features   2097152/3196615  ( 65.6%)  elapsed=1.1s
+      projecting features   3145728/3196615  ( 98.4%)  elapsed=1.6s
+      projecting features   3196615/3196615  (100.0%)  elapsed=1.6s
+      projected 3196615 features to 32-d on GPU in 1.6s (409.2 MB on GPU)
+      coreset (minibatch b=128): 7937/159830 (  5.0%)  max-min-dist=0.4502  round=62/1249  elapsed=1.0s
+      coreset (minibatch b=128): 15873/159830 (  9.9%)  max-min-dist=0.4095  round=124/1249  elapsed=1.9s
+      coreset (minibatch b=128): 23809/159830 ( 14.9%)  max-min-dist=0.3872  round=186/1249  elapsed=2.9s
+      coreset (minibatch b=128): 31745/159830 ( 19.9%)  max-min-dist=0.3715  round=248/1249  elapsed=3.9s
+      coreset (minibatch b=128): 39681/159830 ( 24.8%)  max-min-dist=0.3595  round=310/1249  elapsed=4.8s
+      coreset (minibatch b=128): 47617/159830 ( 29.8%)  max-min-dist=0.3498  round=372/1249  elapsed=5.8s
+      coreset (minibatch b=128): 55553/159830 ( 34.8%)  max-min-dist=0.3415  round=434/1249  elapsed=6.7s
+      coreset (minibatch b=128): 63489/159830 ( 39.7%)  max-min-dist=0.3344  round=496/1249  elapsed=7.7s
+      coreset (minibatch b=128): 71425/159830 ( 44.7%)  max-min-dist=0.3281  round=558/1249  elapsed=8.7s
+      coreset (minibatch b=128): 79361/159830 ( 49.7%)  max-min-dist=0.3225  round=620/1249  elapsed=9.6s
+      coreset (minibatch b=128): 87297/159830 ( 54.6%)  max-min-dist=0.3175  round=682/1249  elapsed=10.6s
+      coreset (minibatch b=128): 95233/159830 ( 59.6%)  max-min-dist=0.3129  round=744/1249  elapsed=11.6s
+      coreset (minibatch b=128): 103169/159830 ( 64.5%)  max-min-dist=0.3086  round=806/1249  elapsed=12.5s
+      coreset (minibatch b=128): 111105/159830 ( 69.5%)  max-min-dist=0.3046  round=868/1249  elapsed=13.5s
+      coreset (minibatch b=128): 119041/159830 ( 74.5%)  max-min-dist=0.3009  round=930/1249  elapsed=14.5s
+      coreset (minibatch b=128): 126977/159830 ( 79.4%)  max-min-dist=0.2974  round=992/1249  elapsed=15.4s
+      coreset (minibatch b=128): 134913/159830 ( 84.4%)  max-min-dist=0.2941  round=1054/1249  elapsed=16.4s
+      coreset (minibatch b=128): 142849/159830 ( 89.4%)  max-min-dist=0.2910  round=1116/1249  elapsed=17.3s
+      coreset (minibatch b=128): 150785/159830 ( 94.3%)  max-min-dist=0.2880  round=1178/1249  elapsed=18.3s
+      coreset (minibatch b=128): 158721/159830 ( 99.3%)  max-min-dist=0.2852  round=1240/1249  elapsed=19.3s
+      coreset (minibatch b=128): 159830/159830 (100.0%)  max-min-dist=0.2848  round=1249/1249  elapsed=19.4s
+    [11:53:39] memory bank ready  shape=(159830, 3072)  dtype=torch.float16  (982.0 MB on GPU)
+    saved memory bank -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/banks/class_06_memory.pt
+
+--- local validation — per-anomaly-type pixel-AP  (tta=hvflip, multiview=none) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9912 ± 0.0065
+    anomaly_02            5          0.1258 ± 0.0806
+    anomaly_03            5          0.1311 ± 0.1032
+    anomaly_04            5          0.6042 ± 0.2014
+    anomaly_05            5          0.7413 ± 0.3710
+    anomaly_06            5          0.4691 ± 0.2590
+    anomaly_07            5          0.9866 ± 0.0078
+    >>> class class_06 mean pixel-AP (avg over types): 0.5785
+
+--- scoring 1010 test images (tta=hvflip, multiview=none) ---
+      scored 200/1010
+      scored 400/1010
+      scored 600/1010
+      scored 800/1010
+      scored 1000/1010
+  class class_06 done in 2.1 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_07
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2145  train_anomaly=35  test=915
+    [11:54:49] extracting train/good features (2145 images, input_size=518, backbone=dinov2_vitb14_reg, layers=[3, 6, 9, 11], target_layer=3)...
+      extracted features from 256 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 512 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 768 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1024 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1280 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1536 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1792 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 2048 images (feat dim=3072, patches/img=1369, kept/img=1369)
+    -> 2936505 patch features (fp16, CPU; 18.04 GB)
+    [11:55:20] greedy coreset [minibatch (batch_size=128)]: selecting 146825 of 2936505 patches (5.0%)
+      projecting features   1048576/2936505  ( 35.7%)  elapsed=0.5s
+      projecting features   2097152/2936505  ( 71.4%)  elapsed=1.1s
+      projecting features   2936505/2936505  (100.0%)  elapsed=1.5s
+      projected 2936505 features to 32-d on GPU in 1.5s (375.9 MB on GPU)
+      coreset (minibatch b=128): 7297/146825 (  5.0%)  max-min-dist=0.4721  round=57/1148  elapsed=0.8s
+      coreset (minibatch b=128): 14593/146825 (  9.9%)  max-min-dist=0.4317  round=114/1148  elapsed=1.6s
+      coreset (minibatch b=128): 21889/146825 ( 14.9%)  max-min-dist=0.4094  round=171/1148  elapsed=2.4s
+      coreset (minibatch b=128): 29185/146825 ( 19.9%)  max-min-dist=0.3940  round=228/1148  elapsed=3.3s
+      coreset (minibatch b=128): 36481/146825 ( 24.8%)  max-min-dist=0.3820  round=285/1148  elapsed=4.1s
+      coreset (minibatch b=128): 43777/146825 ( 29.8%)  max-min-dist=0.3725  round=342/1148  elapsed=4.9s
+      coreset (minibatch b=128): 51073/146825 ( 34.8%)  max-min-dist=0.3643  round=399/1148  elapsed=5.7s
+      coreset (minibatch b=128): 58369/146825 ( 39.8%)  max-min-dist=0.3572  round=456/1148  elapsed=6.5s
+      coreset (minibatch b=128): 65665/146825 ( 44.7%)  max-min-dist=0.3509  round=513/1148  elapsed=7.3s
+      coreset (minibatch b=128): 72961/146825 ( 49.7%)  max-min-dist=0.3452  round=570/1148  elapsed=8.1s
+      coreset (minibatch b=128): 80257/146825 ( 54.7%)  max-min-dist=0.3400  round=627/1148  elapsed=9.0s
+      coreset (minibatch b=128): 87553/146825 ( 59.6%)  max-min-dist=0.3354  round=684/1148  elapsed=9.8s
+      coreset (minibatch b=128): 94849/146825 ( 64.6%)  max-min-dist=0.3310  round=741/1148  elapsed=10.6s
+      coreset (minibatch b=128): 102145/146825 ( 69.6%)  max-min-dist=0.3269  round=798/1148  elapsed=11.4s
+      coreset (minibatch b=128): 109441/146825 ( 74.5%)  max-min-dist=0.3231  round=855/1148  elapsed=12.2s
+      coreset (minibatch b=128): 116737/146825 ( 79.5%)  max-min-dist=0.3195  round=912/1148  elapsed=13.0s
+      coreset (minibatch b=128): 124033/146825 ( 84.5%)  max-min-dist=0.3162  round=969/1148  elapsed=13.8s
+      coreset (minibatch b=128): 131329/146825 ( 89.4%)  max-min-dist=0.3130  round=1026/1148  elapsed=14.7s
+      coreset (minibatch b=128): 138625/146825 ( 94.4%)  max-min-dist=0.3099  round=1083/1148  elapsed=15.5s
+      coreset (minibatch b=128): 145921/146825 ( 99.4%)  max-min-dist=0.3069  round=1140/1148  elapsed=16.3s
+      coreset (minibatch b=128): 146825/146825 (100.0%)  max-min-dist=0.3066  round=1148/1148  elapsed=16.4s
+    [11:55:39] memory bank ready  shape=(146825, 3072)  dtype=torch.float16  (902.1 MB on GPU)
+    saved memory bank -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/banks/class_07_memory.pt
+
+--- local validation — per-anomaly-type pixel-AP  (tta=hvflip, multiview=none) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7350 ± 0.3660
+    anomaly_02            5          0.2605 ± 0.2289
+    anomaly_03            5          0.6703 ± 0.0811
+    anomaly_04            5          0.1873 ± 0.1107
+    anomaly_05            5          0.4812 ± 0.2474
+    anomaly_06            5          0.1036 ± 0.0671
+    anomaly_07            5          0.2055 ± 0.1068
+    >>> class class_07 mean pixel-AP (avg over types): 0.3776
+
+--- scoring 915 test images (tta=hvflip, multiview=none) ---
+      scored 200/915
+      scored 400/915
+      scored 600/915
+      scored 800/915
+  class class_07 done in 1.9 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_08
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2045  train_anomaly=35  test=960
+    [11:56:41] extracting train/good features (2045 images, input_size=518, backbone=dinov2_vitb14_reg, layers=[3, 6, 9, 11], target_layer=3)...
+      extracted features from 256 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 512 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 768 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1024 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1280 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1536 images (feat dim=3072, patches/img=1369, kept/img=1369)
+      extracted features from 1792 images (feat dim=3072, patches/img=1369, kept/img=1369)
+    -> 2799605 patch features (fp16, CPU; 17.20 GB)
+    [11:57:11] greedy coreset [minibatch (batch_size=128)]: selecting 139980 of 2799605 patches (5.0%)
+      projecting features   1048576/2799605  ( 37.5%)  elapsed=0.5s
+      projecting features   2097152/2799605  ( 74.9%)  elapsed=1.1s
+      projecting features   2799605/2799605  (100.0%)  elapsed=1.4s
+      projected 2799605 features to 32-d on GPU in 1.4s (358.3 MB on GPU)
+      coreset (minibatch b=128): 6913/139980 (  4.9%)  max-min-dist=0.3329  round=54/1094  elapsed=0.7s
+      coreset (minibatch b=128): 13825/139980 (  9.9%)  max-min-dist=0.2949  round=108/1094  elapsed=1.5s
+      coreset (minibatch b=128): 20737/139980 ( 14.8%)  max-min-dist=0.2757  round=162/1094  elapsed=2.2s
+      coreset (minibatch b=128): 27649/139980 ( 19.8%)  max-min-dist=0.2629  round=216/1094  elapsed=2.9s
+      coreset (minibatch b=128): 34561/139980 ( 24.7%)  max-min-dist=0.2530  round=270/1094  elapsed=3.7s
+      coreset (minibatch b=128): 41473/139980 ( 29.6%)  max-min-dist=0.2453  round=324/1094  elapsed=4.4s
+      coreset (minibatch b=128): 48385/139980 ( 34.6%)  max-min-dist=0.2388  round=378/1094  elapsed=5.1s
+      coreset (minibatch b=128): 55297/139980 ( 39.5%)  max-min-dist=0.2332  round=432/1094  elapsed=5.9s
+      coreset (minibatch b=128): 62209/139980 ( 44.4%)  max-min-dist=0.2283  round=486/1094  elapsed=6.6s
+      coreset (minibatch b=128): 69121/139980 ( 49.4%)  max-min-dist=0.2238  round=540/1094  elapsed=7.4s
+      coreset (minibatch b=128): 76033/139980 ( 54.3%)  max-min-dist=0.2199  round=594/1094  elapsed=8.1s
+      coreset (minibatch b=128): 82945/139980 ( 59.3%)  max-min-dist=0.2164  round=648/1094  elapsed=8.8s
+      coreset (minibatch b=128): 89857/139980 ( 64.2%)  max-min-dist=0.2130  round=702/1094  elapsed=9.6s
+      coreset (minibatch b=128): 96769/139980 ( 69.1%)  max-min-dist=0.2100  round=756/1094  elapsed=10.3s
+      coreset (minibatch b=128): 103681/139980 ( 74.1%)  max-min-dist=0.2072  round=810/1094  elapsed=11.0s
+      coreset (minibatch b=128): 110593/139980 ( 79.0%)  max-min-dist=0.2046  round=864/1094  elapsed=11.8s
+      coreset (minibatch b=128): 117505/139980 ( 83.9%)  max-min-dist=0.2021  round=918/1094  elapsed=12.5s
+      coreset (minibatch b=128): 124417/139980 ( 88.9%)  max-min-dist=0.1998  round=972/1094  elapsed=13.2s
+      coreset (minibatch b=128): 131329/139980 ( 93.8%)  max-min-dist=0.1977  round=1026/1094  elapsed=14.0s
+      coreset (minibatch b=128): 138241/139980 ( 98.8%)  max-min-dist=0.1956  round=1080/1094  elapsed=14.7s
+      coreset (minibatch b=128): 139980/139980 (100.0%)  max-min-dist=0.1951  round=1094/1094  elapsed=14.9s
+    [11:57:28] memory bank ready  shape=(139980, 3072)  dtype=torch.float16  (860.0 MB on GPU)
+    saved memory bank -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/banks/class_08_memory.pt
+
+--- local validation — per-anomaly-type pixel-AP  (tta=hvflip, multiview=none) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9577 ± 0.0175
+    anomaly_02            5          0.5285 ± 0.1712
+    anomaly_03            5          0.9882 ± 0.0015
+    anomaly_04            5          0.1896 ± 0.3792
+    anomaly_05            5          0.1595 ± 0.3191
+    anomaly_06            5          0.8435 ± 0.0176
+    anomaly_07            5          0.0913 ± 0.1826
+    >>> class class_08 mean pixel-AP (avg over types): 0.5369
+
+--- scoring 960 test images (tta=hvflip, multiview=none) ---
+      scored 200/960
+      scored 400/960
+      scored 600/960
+      scored 800/960
+  class class_08 done in 1.8 min
+[local_preds_saver] saved 235 predictions (518x518, ~10.03% positive pixels)
+[local_preds_saver]   score range: [0.004069, 0.3315]  (stored as-is, no clipping)
+[local_preds_saver]   wrote -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/local_predictions.npz
+
+==============================================================================
+  LOCAL VALIDATION SUMMARY
+==============================================================================
+  class        mean pixel-AP   time (min)
+  class_01            0.5778          1.9
+  class_02            0.4923          1.7
+  class_03            0.2685          2.0
+  class_04            0.5607          2.0
+  class_05            0.4795          1.5
+  class_06            0.5785          2.1
+  class_07            0.3776          1.9
+  class_08            0.5369          1.8
+  OVERALL             0.4840
+  saved per-(class, anomaly_type) AP table -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/local_eval.csv
+
+==============================================================================
+  SUBMISSION
+==============================================================================
+    saved 5910 test predictions (224x224, range [0.003375, 0.4015]) -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/test_predictions.npz
+
+--- calibrating scores and writing submission.csv ---
+    global score calibration  lo=0.0117  hi=0.1125
+    wrote 5910 rows -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/submission.csv
+    zipped         -> /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/submission.zip
+
+  Upload to the Kaggle leaderboard:
+    /workspace/anomaly-detection/baseline_out/runs/20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2/submission.zip
+
+  ablation row appended -> /workspace/anomaly-detection/baseline_out/ablation_master.csv
+
+██████████████████████████████████████████████████████████████████████████████
+  DONE — run_id=20260521-114333_dnv2b14r_L3_6_9_11_T3_in518_cs05_mb128_tta-hvflip_retrain-exp5-vit-dnv2reg_1581f2
+██████████████████████████████████████████████████████████████████████████████

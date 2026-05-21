@@ -1,0 +1,60 @@
+{
+  "data_root": "/workspace/anomaly-detection/data",
+  "report_dir": "/workspace/anomaly-detection/baseline_out",
+  "backbone": "dinov2_vitb14_reg",
+  "input_size": 392,
+  "feature_layers": [
+    3,
+    6,
+    9,
+    11
+  ],
+  "target_layer": 9,
+  "vit_proj_dim": 256,
+  "epochs": 256,
+  "total_iters": 2500,
+  "batch_size": 16,
+  "lr": 0.03,
+  "lr_head": 0.0001,
+  "momentum": 0.9,
+  "weight_decay": 3e-05,
+  "amp": true,
+  "num_workers": 8,
+  "area_ratio": [
+    0.02,
+    0.15
+  ],
+  "aspect_ratio": [
+    0.3,
+    3.3
+  ],
+  "color_jitter": 0.1,
+  "scar_width": [
+    10,
+    25
+  ],
+  "scar_height": [
+    2,
+    16
+  ],
+  "scar_rot": 45.0,
+  "coreset_frac": 0.05,
+  "coreset_algo": "minibatch",
+  "coreset_batch": 128,
+  "coreset_fp16": true,
+  "patch_size": 3,
+  "score_chunk": 4096,
+  "memory_chunk": 16384,
+  "memory_dtype": "fp16",
+  "project_chunk": 65536,
+  "fit_batch_size": 32,
+  "score_batch_size": 8,
+  "smooth_sigma": 1.5,
+  "tta": "hvflip",
+  "seed": 0,
+  "only_classes": [],
+  "skip_eval": false,
+  "skip_submission": false,
+  "zip_submission": true,
+  "run_tag": "retrain-exp8c-vit-dnv2reg"
+}

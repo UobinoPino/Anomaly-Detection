@@ -1,0 +1,320 @@
+
+██████████████████████████████████████████████████████████████████████████████
+  REVERSE DISTILLATION v2 — RUN 20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff
+██████████████████████████████████████████████████████████████████████████████
+  data_root        : /workspace/anomaly-detection/data
+  run_dir          : /workspace/anomaly-detection/baseline_out/runs/20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff
+  teacher backbone : dinov2_vitb14_reg
+  teacher layers   : [9]
+  input_size       : 392
+  amap_mode        : mul
+  total_iters      : 2500  (overrides --epochs=200)
+  batch_size       : 8
+  lr / b1 / b2     : 0.0005 / 0.5 / 0.999  (Adam)
+  weight_decay     : 0.0
+  amp              : True    num_workers: 8
+  smooth_sigma     : 1.5    tta: hvflip
+  device           : cuda
+                    NVIDIA GeForce RTX 4090, 25.3 GB
+
+  running on 8 class(es): class_01, class_02, class_03, class_04, class_05, class_06, class_07, class_08
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_01
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2600  train_anomaly=25  test=465
+    [auto-epoch] total_iters=2500 / 325 iters/epoch = 8 epochs (--epochs=200 overridden)
+    [13:56:04] training: 8 epochs × 325 iters (2600 total), 2600 train_good, batch=8, lr=5e-04, amp=True, teacher_layers=[9]
+      epoch    1/8  loss=0.1800  lr=4.81e-04  elapsed=9.0s
+      epoch    2/8  loss=0.1240  lr=4.27e-04  elapsed=14.1s
+      epoch    3/8  loss=0.1115  lr=3.46e-04  elapsed=19.4s
+      epoch    4/8  loss=0.1044  lr=2.50e-04  elapsed=24.6s
+      epoch    5/8  loss=0.0998  lr=1.54e-04  elapsed=29.8s
+      epoch    6/8  loss=0.0967  lr=7.32e-05  elapsed=35.1s
+      epoch    7/8  loss=0.0951  lr=1.90e-05  elapsed=40.3s
+      epoch    8/8  loss=0.0944  lr=0.00e+00  elapsed=45.6s
+    [13:56:50] training done (45.6s)
+
+--- local validation — pixel-AP per (class, anomaly_type) (tta=hvflip, amap=mul) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.6360 ± 0.3324
+    anomaly_02            5          0.5527 ± 0.0575
+    anomaly_03            5          0.1521 ± 0.2225
+    anomaly_04            5          0.5054 ± 0.1659
+    anomaly_05            5          0.1530 ± 0.3060
+    >>> class class_01 mean pixel-AP: 0.3998
+
+--- scoring 465 test images (tta=hvflip, amap=mul) ---
+      scored 200/465
+      scored 400/465
+  class class_01 done in 1.0 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_02
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2135  train_anomaly=30  test=800
+    [auto-epoch] total_iters=2500 / 267 iters/epoch = 10 epochs (--epochs=200 overridden)
+    [13:57:06] training: 10 epochs × 267 iters (2670 total), 2135 train_good, batch=8, lr=5e-04, amp=True, teacher_layers=[9]
+      epoch    1/10  loss=0.2140  lr=4.88e-04  elapsed=4.6s
+      epoch    2/10  loss=0.1543  lr=4.52e-04  elapsed=9.0s
+      epoch    3/10  loss=0.1414  lr=3.97e-04  elapsed=13.3s
+      epoch    4/10  loss=0.1336  lr=3.27e-04  elapsed=17.6s
+      epoch    5/10  loss=0.1282  lr=2.50e-04  elapsed=21.9s
+      epoch    6/10  loss=0.1243  lr=1.73e-04  elapsed=26.2s
+      epoch    7/10  loss=0.1214  lr=1.03e-04  elapsed=30.6s
+      epoch    8/10  loss=0.1194  lr=4.77e-05  elapsed=34.9s
+      epoch    9/10  loss=0.1183  lr=1.22e-05  elapsed=39.2s
+      epoch   10/10  loss=0.1179  lr=0.00e+00  elapsed=43.5s
+    [13:57:49] training done (43.5s)
+
+--- local validation — pixel-AP per (class, anomaly_type) (tta=hvflip, amap=mul) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7677 ± 0.1238
+    anomaly_02            5          0.4296 ± 0.2258
+    anomaly_03            5          0.4466 ± 0.1127
+    anomaly_04            5          0.1965 ± 0.0477
+    anomaly_05            5          0.0256 ± 0.0511
+    anomaly_06            5          0.0613 ± 0.1226
+    >>> class class_02 mean pixel-AP: 0.3212
+
+--- scoring 800 test images (tta=hvflip, amap=mul) ---
+      scored 200/800
+      scored 400/800
+      scored 600/800
+      scored 800/800
+  class class_02 done in 0.9 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_03
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2520  train_anomaly=20  test=790
+    [auto-epoch] total_iters=2500 / 315 iters/epoch = 8 epochs (--epochs=200 overridden)
+    [13:57:57] training: 8 epochs × 315 iters (2520 total), 2520 train_good, batch=8, lr=5e-04, amp=True, teacher_layers=[9]
+      epoch    1/8  loss=0.2173  lr=4.81e-04  elapsed=5.4s
+      epoch    2/8  loss=0.1631  lr=4.27e-04  elapsed=10.5s
+      epoch    3/8  loss=0.1512  lr=3.46e-04  elapsed=15.6s
+      epoch    4/8  loss=0.1444  lr=2.50e-04  elapsed=20.7s
+      epoch    5/8  loss=0.1390  lr=1.54e-04  elapsed=25.8s
+      epoch    6/8  loss=0.1342  lr=7.32e-05  elapsed=30.9s
+      epoch    7/8  loss=0.1311  lr=1.90e-05  elapsed=36.0s
+      epoch    8/8  loss=0.1299  lr=0.00e+00  elapsed=41.1s
+    [13:58:38] training done (41.1s)
+
+--- local validation — pixel-AP per (class, anomaly_type) (tta=hvflip, amap=mul) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.0408 ± 0.0213
+    anomaly_02            5          0.3186 ± 0.2303
+    anomaly_03            5          0.0613 ± 0.0779
+    anomaly_04            5          0.1030 ± 0.2059
+    >>> class class_03 mean pixel-AP: 0.1309
+
+--- scoring 790 test images (tta=hvflip, amap=mul) ---
+      scored 200/790
+      scored 400/790
+      scored 600/790
+  class class_03 done in 0.8 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_04
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2585  train_anomaly=25  test=745
+    [auto-epoch] total_iters=2500 / 324 iters/epoch = 8 epochs (--epochs=200 overridden)
+    [13:58:46] training: 8 epochs × 324 iters (2592 total), 2585 train_good, batch=8, lr=5e-04, amp=True, teacher_layers=[9]
+      epoch    1/8  loss=0.2136  lr=4.81e-04  elapsed=5.7s
+      epoch    2/8  loss=0.1539  lr=4.27e-04  elapsed=10.9s
+      epoch    3/8  loss=0.1414  lr=3.46e-04  elapsed=16.2s
+      epoch    4/8  loss=0.1339  lr=2.50e-04  elapsed=21.4s
+      epoch    5/8  loss=0.1291  lr=1.54e-04  elapsed=26.7s
+      epoch    6/8  loss=0.1259  lr=7.32e-05  elapsed=31.9s
+      epoch    7/8  loss=0.1241  lr=1.90e-05  elapsed=37.1s
+      epoch    8/8  loss=0.1232  lr=0.00e+00  elapsed=42.4s
+    [13:59:28] training done (42.4s)
+
+--- local validation — pixel-AP per (class, anomaly_type) (tta=hvflip, amap=mul) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.0999 ± 0.1116
+    anomaly_02            5          0.3686 ± 0.2064
+    anomaly_03            5          0.2654 ± 0.1468
+    anomaly_04            5          0.2011 ± 0.1525
+    anomaly_05            5          0.2645 ± 0.3102
+    >>> class class_04 mean pixel-AP: 0.2399
+
+--- scoring 745 test images (tta=hvflip, amap=mul) ---
+      scored 200/745
+      scored 400/745
+      scored 600/745
+  class class_04 done in 0.8 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_05
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2640  train_anomaly=30  test=225
+    [auto-epoch] total_iters=2500 / 330 iters/epoch = 8 epochs (--epochs=200 overridden)
+    [13:59:35] training: 8 epochs × 330 iters (2640 total), 2640 train_good, batch=8, lr=5e-04, amp=True, teacher_layers=[9]
+      epoch    1/8  loss=0.1966  lr=4.81e-04  elapsed=5.8s
+      epoch    2/8  loss=0.1409  lr=4.27e-04  elapsed=11.1s
+      epoch    3/8  loss=0.1282  lr=3.46e-04  elapsed=16.4s
+      epoch    4/8  loss=0.1205  lr=2.50e-04  elapsed=21.8s
+      epoch    5/8  loss=0.1152  lr=1.54e-04  elapsed=27.2s
+      epoch    6/8  loss=0.1119  lr=7.32e-05  elapsed=32.6s
+      epoch    7/8  loss=0.1099  lr=1.90e-05  elapsed=37.9s
+      epoch    8/8  loss=0.1091  lr=0.00e+00  elapsed=43.3s
+    [14:00:19] training done (43.3s)
+
+--- local validation — pixel-AP per (class, anomaly_type) (tta=hvflip, amap=mul) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1220 ± 0.2440
+    anomaly_02            5          0.1633 ± 0.0822
+    anomaly_03            5          0.1400 ± 0.1152
+    anomaly_04            5          0.1907 ± 0.1560
+    anomaly_05            5          0.2555 ± 0.1719
+    anomaly_06            5          0.1593 ± 0.2191
+    >>> class class_05 mean pixel-AP: 0.1718
+
+--- scoring 225 test images (tta=hvflip, amap=mul) ---
+      scored 200/225
+  class class_05 done in 0.8 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_06
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2335  train_anomaly=35  test=1010
+    [auto-epoch] total_iters=2500 / 292 iters/epoch = 9 epochs (--epochs=200 overridden)
+    [14:00:22] training: 9 epochs × 292 iters (2628 total), 2335 train_good, batch=8, lr=5e-04, amp=True, teacher_layers=[9]
+      epoch    1/9  loss=0.2276  lr=4.85e-04  elapsed=5.4s
+      epoch    2/9  loss=0.1732  lr=4.42e-04  elapsed=10.2s
+      epoch    3/9  loss=0.1601  lr=3.75e-04  elapsed=14.9s
+      epoch    4/9  loss=0.1517  lr=2.93e-04  elapsed=20.0s
+      epoch    5/9  loss=0.1464  lr=2.07e-04  elapsed=24.8s
+      epoch    6/9  loss=0.1422  lr=1.25e-04  elapsed=29.5s
+      epoch    7/9  loss=0.1395  lr=5.85e-05  elapsed=34.3s
+      epoch    8/9  loss=0.1378  lr=1.51e-05  elapsed=39.0s
+      epoch    9/9  loss=0.1371  lr=0.00e+00  elapsed=43.8s
+    [14:01:06] training done (43.8s)
+
+--- local validation — pixel-AP per (class, anomaly_type) (tta=hvflip, amap=mul) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.8483 ± 0.0307
+    anomaly_02            5          0.1111 ± 0.0572
+    anomaly_03            5          0.2713 ± 0.2146
+    anomaly_04            5          0.3980 ± 0.2107
+    anomaly_05            5          0.5367 ± 0.2731
+    anomaly_06            5          0.3632 ± 0.1909
+    anomaly_07            5          0.8526 ± 0.0647
+    >>> class class_06 mean pixel-AP: 0.4830
+
+--- scoring 1010 test images (tta=hvflip, amap=mul) ---
+      scored 200/1010
+      scored 400/1010
+      scored 600/1010
+      scored 800/1010
+      scored 1000/1010
+  class class_06 done in 0.9 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_07
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2145  train_anomaly=35  test=915
+    [auto-epoch] total_iters=2500 / 269 iters/epoch = 10 epochs (--epochs=200 overridden)
+    [14:01:16] training: 10 epochs × 269 iters (2690 total), 2145 train_good, batch=8, lr=5e-04, amp=True, teacher_layers=[9]
+      epoch    1/10  loss=0.2500  lr=4.88e-04  elapsed=4.9s
+      epoch    2/10  loss=0.1934  lr=4.52e-04  elapsed=9.3s
+      epoch    3/10  loss=0.1781  lr=3.97e-04  elapsed=13.6s
+      epoch    4/10  loss=0.1692  lr=3.27e-04  elapsed=18.0s
+      epoch    5/10  loss=0.1632  lr=2.50e-04  elapsed=22.3s
+      epoch    6/10  loss=0.1586  lr=1.73e-04  elapsed=26.7s
+      epoch    7/10  loss=0.1553  lr=1.03e-04  elapsed=31.0s
+      epoch    8/10  loss=0.1529  lr=4.77e-05  elapsed=35.4s
+      epoch    9/10  loss=0.1516  lr=1.22e-05  elapsed=39.7s
+      epoch   10/10  loss=0.1509  lr=0.00e+00  elapsed=44.1s
+    [14:02:00] training done (44.1s)
+
+--- local validation — pixel-AP per (class, anomaly_type) (tta=hvflip, amap=mul) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.6579 ± 0.3264
+    anomaly_02            5          0.1040 ± 0.1079
+    anomaly_03            5          0.3675 ± 0.0369
+    anomaly_04            5          0.1002 ± 0.0505
+    anomaly_05            5          0.2202 ± 0.1304
+    anomaly_06            5          0.1289 ± 0.0677
+    anomaly_07            5          0.2089 ± 0.0555
+    >>> class class_07 mean pixel-AP: 0.2554
+
+--- scoring 915 test images (tta=hvflip, amap=mul) ---
+      scored 200/915
+      scored 400/915
+      scored 600/915
+      scored 800/915
+  class class_07 done in 0.9 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_08
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2045  train_anomaly=35  test=960
+    [auto-epoch] total_iters=2500 / 256 iters/epoch = 10 epochs (--epochs=200 overridden)
+    [14:02:09] training: 10 epochs × 256 iters (2560 total), 2045 train_good, batch=8, lr=5e-04, amp=True, teacher_layers=[9]
+      epoch    1/10  loss=0.2066  lr=4.88e-04  elapsed=4.7s
+      epoch    2/10  loss=0.1404  lr=4.52e-04  elapsed=8.9s
+      epoch    3/10  loss=0.1267  lr=3.97e-04  elapsed=13.1s
+      epoch    4/10  loss=0.1186  lr=3.27e-04  elapsed=17.3s
+      epoch    5/10  loss=0.1126  lr=2.50e-04  elapsed=21.5s
+      epoch    6/10  loss=0.1086  lr=1.73e-04  elapsed=25.6s
+      epoch    7/10  loss=0.1054  lr=1.03e-04  elapsed=29.8s
+      epoch    8/10  loss=0.1034  lr=4.77e-05  elapsed=33.9s
+      epoch    9/10  loss=0.1024  lr=1.22e-05  elapsed=38.1s
+      epoch   10/10  loss=0.1019  lr=0.00e+00  elapsed=42.2s
+    [14:02:51] training done (42.2s)
+
+--- local validation — pixel-AP per (class, anomaly_type) (tta=hvflip, amap=mul) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.8706 ± 0.0529
+    anomaly_02            5          0.2820 ± 0.0886
+    anomaly_03            5          0.8950 ± 0.0345
+    anomaly_04            5          0.0878 ± 0.1756
+    anomaly_05            5          0.1432 ± 0.2863
+    anomaly_06            5          0.5645 ± 0.0343
+    anomaly_07            5          0.0454 ± 0.0908
+    >>> class class_08 mean pixel-AP: 0.4126
+
+--- scoring 960 test images (tta=hvflip, amap=mul) ---
+      scored 200/960
+      scored 400/960
+      scored 600/960
+      scored 800/960
+  class class_08 done in 0.9 min
+[local_preds_saver] saved 235 predictions (392x392, ~10.02% positive pixels)
+[local_preds_saver]   score range: [0.02323, 0.6747]  (stored as-is, no clipping)
+[local_preds_saver]   wrote -> /workspace/anomaly-detection/baseline_out/runs/20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff/local_predictions.npz
+
+==============================================================================
+  LOCAL VALIDATION SUMMARY
+==============================================================================
+  class        mean pixel-AP   time (min)
+  class_01            0.3998          1.0
+  class_02            0.3212          0.9
+  class_03            0.1309          0.8
+  class_04            0.2399          0.8
+  class_05            0.1718          0.8
+  class_06            0.4830          0.9
+  class_07            0.2554          0.9
+  class_08            0.4126          0.9
+  OVERALL             0.3018
+  saved per-(class, anomaly_type) AP -> /workspace/anomaly-detection/baseline_out/runs/20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff/local_eval.csv
+
+==============================================================================
+  SUBMISSION
+==============================================================================
+    saved 5910 test predictions (224x224, range [0.01997, 0.7682]) -> /workspace/anomaly-detection/baseline_out/runs/20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff/test_predictions.npz
+
+--- calibrating scores and writing submission.csv ---
+    global score calibration  lo=0.0477  hi=0.3603
+    wrote 5910 rows -> /workspace/anomaly-detection/baseline_out/runs/20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff/submission.csv
+    zipped         -> /workspace/anomaly-detection/baseline_out/runs/20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff/submission.zip
+
+  Upload: /workspace/anomaly-detection/baseline_out/runs/20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff/submission.zip
+
+  ablation row appended -> /workspace/anomaly-detection/baseline_out/ablation_master.csv
+
+██████████████████████████████████████████████████████████████████████████████
+  DONE — run_id=20260521-135556_rd_dnv2b14r_L9_in392_it2500_bs8_lr5e-04_mul_tta-hvflip_rd-vit-dnv2reg_38a4ff
+██████████████████████████████████████████████████████████████████████████████

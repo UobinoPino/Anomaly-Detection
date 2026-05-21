@@ -1,0 +1,513 @@
+
+██████████████████████████████████████████████████████████████████████████████
+  CUTPASTE v5 (backbone=dinov2_vitb14_reg) — RUN 20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562
+██████████████████████████████████████████████████████████████████████████████
+  data_root        : /workspace/anomaly-detection/data
+  run_dir          : /workspace/anomaly-detection/baseline_out/runs/20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562
+  backbone         : dinov2_vitb14_reg
+  input_size       : 392
+  feature_layers   : [3, 6, 9, 11]
+  target_layer     : 9
+  encoder_mode     : frozen (ViT)
+  vit_proj_dim     : 256
+  lr_head          : 0.0001
+  total_iters      : 2500
+  batch_size       : 16
+  device           : cuda
+  running on 8 class(es): class_01, class_02, class_03, class_04, class_05, class_06, class_07, class_08
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_01
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2600  train_anomaly=25  test=465
+    [auto-epoch] total_iters=2500 -> 16 epochs
+    [12:28:36] ViT mode: backbone FROZEN, head + projection trainable (1.12M)
+      epoch    2/16  loss=0.1610  acc=0.9473  lr=9.62e-05  elapsed=38.8s
+      epoch    4/16  loss=0.1180  acc=0.9610  lr=8.54e-05  elapsed=73.8s
+      epoch    6/16  loss=0.1035  acc=0.9663  lr=6.91e-05  elapsed=108.9s
+      epoch    8/16  loss=0.0904  acc=0.9710  lr=5.00e-05  elapsed=144.1s
+      epoch   10/16  loss=0.0878  acc=0.9726  lr=3.09e-05  elapsed=179.2s
+      epoch   12/16  loss=0.0816  acc=0.9750  lr=1.46e-05  elapsed=214.3s
+      epoch   14/16  loss=0.0733  acc=0.9787  lr=3.81e-06  elapsed=249.4s
+      epoch   16/16  loss=0.0770  acc=0.9791  lr=0.00e+00  elapsed=284.3s
+    [12:33:20] training done (284.3s)
+    [12:33:20] extracting train/good patch features (2600 images)...
+    -> 2038400 patch features  D=1024  4.17 GB CPU
+    [12:33:39] coreset (minibatch, batch=128): 101920 of 2038400
+      projecting features   1048576/2038400  ( 51.4%)  elapsed=0.2s
+      projecting features   2038400/2038400  (100.0%)  elapsed=0.3s
+      projected 2038400 features to 32-d on GPU in 0.4s (260.9 MB on GPU)
+      coreset (minibatch b=128): 4993/101920 (  4.9%)  max-min-dist=0.3382  round=39/797  elapsed=0.7s
+      coreset (minibatch b=128): 9985/101920 (  9.8%)  max-min-dist=0.3037  round=78/797  elapsed=1.0s
+      coreset (minibatch b=128): 14977/101920 ( 14.7%)  max-min-dist=0.2870  round=117/797  elapsed=1.4s
+      coreset (minibatch b=128): 19969/101920 ( 19.6%)  max-min-dist=0.2754  round=156/797  elapsed=1.8s
+      coreset (minibatch b=128): 24961/101920 ( 24.5%)  max-min-dist=0.2671  round=195/797  elapsed=2.2s
+      coreset (minibatch b=128): 29953/101920 ( 29.4%)  max-min-dist=0.2603  round=234/797  elapsed=2.6s
+      coreset (minibatch b=128): 34945/101920 ( 34.3%)  max-min-dist=0.2547  round=273/797  elapsed=3.0s
+      coreset (minibatch b=128): 39937/101920 ( 39.2%)  max-min-dist=0.2501  round=312/797  elapsed=3.4s
+      coreset (minibatch b=128): 44929/101920 ( 44.1%)  max-min-dist=0.2459  round=351/797  elapsed=3.7s
+      coreset (minibatch b=128): 49921/101920 ( 49.0%)  max-min-dist=0.2423  round=390/797  elapsed=4.1s
+      coreset (minibatch b=128): 54913/101920 ( 53.9%)  max-min-dist=0.2390  round=429/797  elapsed=4.5s
+      coreset (minibatch b=128): 59905/101920 ( 58.8%)  max-min-dist=0.2360  round=468/797  elapsed=4.9s
+      coreset (minibatch b=128): 64897/101920 ( 63.7%)  max-min-dist=0.2332  round=507/797  elapsed=5.3s
+      coreset (minibatch b=128): 69889/101920 ( 68.6%)  max-min-dist=0.2307  round=546/797  elapsed=5.7s
+      coreset (minibatch b=128): 74881/101920 ( 73.5%)  max-min-dist=0.2284  round=585/797  elapsed=6.1s
+      coreset (minibatch b=128): 79873/101920 ( 78.4%)  max-min-dist=0.2263  round=624/797  elapsed=6.5s
+      coreset (minibatch b=128): 84865/101920 ( 83.3%)  max-min-dist=0.2242  round=663/797  elapsed=6.8s
+      coreset (minibatch b=128): 89857/101920 ( 88.2%)  max-min-dist=0.2223  round=702/797  elapsed=7.2s
+      coreset (minibatch b=128): 94849/101920 ( 93.1%)  max-min-dist=0.2205  round=741/797  elapsed=7.6s
+      coreset (minibatch b=128): 99841/101920 ( 98.0%)  max-min-dist=0.2188  round=780/797  elapsed=8.0s
+      coreset (minibatch b=128): 101920/101920 (100.0%)  max-min-dist=0.2181  round=797/797  elapsed=8.2s
+    [12:33:48] memory bank: (101920, 1024) torch.float16
+
+--- local validation (tta=hvflip) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7501 ± 0.3754
+    anomaly_02            5          0.8857 ± 0.0543
+    anomaly_03            5          0.2331 ± 0.2901
+    anomaly_04            5          0.7208 ± 0.1650
+    anomaly_05            5          0.1901 ± 0.3802
+    >>> class class_01 mean pixel-AP: 0.5560
+
+--- scoring 465 test images ---
+  class class_01 done in 5.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_02
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2135  train_anomaly=30  test=800
+    [auto-epoch] total_iters=2500 -> 19 epochs
+    [12:34:12] ViT mode: backbone FROZEN, head + projection trainable (1.12M)
+      epoch    2/19  loss=0.2349  acc=0.9160  lr=9.73e-05  elapsed=29.5s
+      epoch    4/19  loss=0.1839  acc=0.9310  lr=8.95e-05  elapsed=58.1s
+      epoch    6/19  loss=0.1601  acc=0.9425  lr=7.73e-05  elapsed=86.8s
+      epoch    8/19  loss=0.1552  acc=0.9444  lr=6.23e-05  elapsed=115.7s
+      epoch   10/19  loss=0.1503  acc=0.9460  lr=4.59e-05  elapsed=144.5s
+      epoch   12/19  loss=0.1396  acc=0.9494  lr=2.99e-05  elapsed=173.4s
+      epoch   14/19  loss=0.1266  acc=0.9602  lr=1.61e-05  elapsed=202.1s
+      epoch   16/19  loss=0.1306  acc=0.9544  lr=6.03e-06  elapsed=230.9s
+      epoch   18/19  loss=0.1333  acc=0.9561  lr=6.82e-07  elapsed=260.0s
+      epoch   19/19  loss=0.1330  acc=0.9550  lr=0.00e+00  elapsed=274.6s
+    [12:38:47] training done (274.6s)
+    [12:38:47] extracting train/good patch features (2135 images)...
+    -> 1673840 patch features  D=1024  3.43 GB CPU
+    [12:39:02] coreset (minibatch, batch=128): 83692 of 1673840
+      projecting features   1048576/1673840  ( 62.6%)  elapsed=0.2s
+      projecting features   1673840/1673840  (100.0%)  elapsed=0.3s
+      projected 1673840 features to 32-d on GPU in 0.3s (214.3 MB on GPU)
+      coreset (minibatch b=128): 4097/83692 (  4.9%)  max-min-dist=0.3625  round=32/654  elapsed=0.3s
+      coreset (minibatch b=128): 8193/83692 (  9.8%)  max-min-dist=0.3225  round=64/654  elapsed=0.5s
+      coreset (minibatch b=128): 12289/83692 ( 14.7%)  max-min-dist=0.3030  round=96/654  elapsed=0.8s
+      coreset (minibatch b=128): 16385/83692 ( 19.6%)  max-min-dist=0.2905  round=128/654  elapsed=1.0s
+      coreset (minibatch b=128): 20481/83692 ( 24.5%)  max-min-dist=0.2810  round=160/654  elapsed=1.3s
+      coreset (minibatch b=128): 24577/83692 ( 29.4%)  max-min-dist=0.2735  round=192/654  elapsed=1.6s
+      coreset (minibatch b=128): 28673/83692 ( 34.3%)  max-min-dist=0.2676  round=224/654  elapsed=1.8s
+      coreset (minibatch b=128): 32769/83692 ( 39.2%)  max-min-dist=0.2625  round=256/654  elapsed=2.1s
+      coreset (minibatch b=128): 36865/83692 ( 44.0%)  max-min-dist=0.2580  round=288/654  elapsed=2.4s
+      coreset (minibatch b=128): 40961/83692 ( 48.9%)  max-min-dist=0.2540  round=320/654  elapsed=2.6s
+      coreset (minibatch b=128): 45057/83692 ( 53.8%)  max-min-dist=0.2504  round=352/654  elapsed=2.9s
+      coreset (minibatch b=128): 49153/83692 ( 58.7%)  max-min-dist=0.2471  round=384/654  elapsed=3.1s
+      coreset (minibatch b=128): 53249/83692 ( 63.6%)  max-min-dist=0.2442  round=416/654  elapsed=3.4s
+      coreset (minibatch b=128): 57345/83692 ( 68.5%)  max-min-dist=0.2416  round=448/654  elapsed=3.7s
+      coreset (minibatch b=128): 61441/83692 ( 73.4%)  max-min-dist=0.2391  round=480/654  elapsed=3.9s
+      coreset (minibatch b=128): 65537/83692 ( 78.3%)  max-min-dist=0.2368  round=512/654  elapsed=4.2s
+      coreset (minibatch b=128): 69633/83692 ( 83.2%)  max-min-dist=0.2346  round=544/654  elapsed=4.4s
+      coreset (minibatch b=128): 73729/83692 ( 88.1%)  max-min-dist=0.2325  round=576/654  elapsed=4.7s
+      coreset (minibatch b=128): 77825/83692 ( 93.0%)  max-min-dist=0.2306  round=608/654  elapsed=5.0s
+      coreset (minibatch b=128): 81921/83692 ( 97.9%)  max-min-dist=0.2288  round=640/654  elapsed=5.2s
+      coreset (minibatch b=128): 83692/83692 (100.0%)  max-min-dist=0.2280  round=654/654  elapsed=5.3s
+    [12:39:08] memory bank: (83692, 1024) torch.float16
+
+--- local validation (tta=hvflip) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9064 ± 0.1112
+    anomaly_02            5          0.7629 ± 0.3816
+    anomaly_03            5          0.7888 ± 0.0979
+    anomaly_04            5          0.5580 ± 0.1138
+    anomaly_05            5          0.0119 ± 0.0238
+    anomaly_06            5          0.1794 ± 0.3588
+    >>> class class_02 mean pixel-AP: 0.5346
+
+--- scoring 800 test images ---
+  class class_02 done in 5.3 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_03
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2520  train_anomaly=20  test=790
+    [auto-epoch] total_iters=2500 -> 16 epochs
+    [12:39:28] ViT mode: backbone FROZEN, head + projection trainable (1.12M)
+      epoch    2/16  loss=0.1736  acc=0.9440  lr=9.62e-05  elapsed=33.9s
+      epoch    4/16  loss=0.1306  acc=0.9579  lr=8.54e-05  elapsed=67.4s
+      epoch    6/16  loss=0.1241  acc=0.9583  lr=6.91e-05  elapsed=101.1s
+      epoch    8/16  loss=0.1141  acc=0.9624  lr=5.00e-05  elapsed=134.7s
+      epoch   10/16  loss=0.0993  acc=0.9705  lr=3.09e-05  elapsed=168.3s
+      epoch   12/16  loss=0.1084  acc=0.9657  lr=1.46e-05  elapsed=202.1s
+      epoch   14/16  loss=0.0952  acc=0.9701  lr=3.81e-06  elapsed=235.8s
+      epoch   16/16  loss=0.1018  acc=0.9701  lr=0.00e+00  elapsed=269.6s
+    [12:43:58] training done (269.6s)
+    [12:43:58] extracting train/good patch features (2520 images)...
+    -> 1975680 patch features  D=1024  4.05 GB CPU
+    [12:44:16] coreset (minibatch, batch=128): 98784 of 1975680
+      projecting features   1048576/1975680  ( 53.1%)  elapsed=0.2s
+      projecting features   1975680/1975680  (100.0%)  elapsed=0.3s
+      projected 1975680 features to 32-d on GPU in 0.3s (252.9 MB on GPU)
+      coreset (minibatch b=128): 4865/98784 (  4.9%)  max-min-dist=0.3513  round=38/772  elapsed=0.4s
+      coreset (minibatch b=128): 9729/98784 (  9.8%)  max-min-dist=0.3112  round=76/772  elapsed=0.7s
+      coreset (minibatch b=128): 14593/98784 ( 14.8%)  max-min-dist=0.2918  round=114/772  elapsed=1.1s
+      coreset (minibatch b=128): 19457/98784 ( 19.7%)  max-min-dist=0.2790  round=152/772  elapsed=1.5s
+      coreset (minibatch b=128): 24321/98784 ( 24.6%)  max-min-dist=0.2695  round=190/772  elapsed=1.8s
+      coreset (minibatch b=128): 29185/98784 ( 29.5%)  max-min-dist=0.2620  round=228/772  elapsed=2.2s
+      coreset (minibatch b=128): 34049/98784 ( 34.5%)  max-min-dist=0.2557  round=266/772  elapsed=2.6s
+      coreset (minibatch b=128): 38913/98784 ( 39.4%)  max-min-dist=0.2504  round=304/772  elapsed=2.9s
+      coreset (minibatch b=128): 43777/98784 ( 44.3%)  max-min-dist=0.2459  round=342/772  elapsed=3.3s
+      coreset (minibatch b=128): 48641/98784 ( 49.2%)  max-min-dist=0.2418  round=380/772  elapsed=3.7s
+      coreset (minibatch b=128): 53505/98784 ( 54.2%)  max-min-dist=0.2382  round=418/772  elapsed=4.0s
+      coreset (minibatch b=128): 58369/98784 ( 59.1%)  max-min-dist=0.2349  round=456/772  elapsed=4.4s
+      coreset (minibatch b=128): 63233/98784 ( 64.0%)  max-min-dist=0.2319  round=494/772  elapsed=4.8s
+      coreset (minibatch b=128): 68097/98784 ( 68.9%)  max-min-dist=0.2291  round=532/772  elapsed=5.1s
+      coreset (minibatch b=128): 72961/98784 ( 73.9%)  max-min-dist=0.2266  round=570/772  elapsed=5.5s
+      coreset (minibatch b=128): 77825/98784 ( 78.8%)  max-min-dist=0.2242  round=608/772  elapsed=5.8s
+      coreset (minibatch b=128): 82689/98784 ( 83.7%)  max-min-dist=0.2219  round=646/772  elapsed=6.2s
+      coreset (minibatch b=128): 87553/98784 ( 88.6%)  max-min-dist=0.2199  round=684/772  elapsed=6.6s
+      coreset (minibatch b=128): 92417/98784 ( 93.6%)  max-min-dist=0.2179  round=722/772  elapsed=6.9s
+      coreset (minibatch b=128): 97281/98784 ( 98.5%)  max-min-dist=0.2160  round=760/772  elapsed=7.3s
+      coreset (minibatch b=128): 98784/98784 (100.0%)  max-min-dist=0.2155  round=772/772  elapsed=7.4s
+    [12:44:24] memory bank: (98784, 1024) torch.float16
+
+--- local validation (tta=hvflip) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.4709 ± 0.2901
+    anomaly_02            5          0.0875 ± 0.1220
+    anomaly_03            5          0.2846 ± 0.3520
+    anomaly_04            5          0.1304 ± 0.2607
+    >>> class class_03 mean pixel-AP: 0.2433
+
+--- scoring 790 test images ---
+  class class_03 done in 5.3 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_04
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2585  train_anomaly=25  test=745
+    [auto-epoch] total_iters=2500 -> 16 epochs
+    [12:44:44] ViT mode: backbone FROZEN, head + projection trainable (1.12M)
+      epoch    2/16  loss=0.1803  acc=0.9408  lr=9.62e-05  elapsed=35.7s
+      epoch    4/16  loss=0.1329  acc=0.9569  lr=8.54e-05  elapsed=71.1s
+      epoch    6/16  loss=0.1321  acc=0.9553  lr=6.91e-05  elapsed=106.2s
+      epoch    8/16  loss=0.1104  acc=0.9635  lr=5.00e-05  elapsed=141.4s
+      epoch   10/16  loss=0.0960  acc=0.9693  lr=3.09e-05  elapsed=176.5s
+      epoch   12/16  loss=0.0959  acc=0.9701  lr=1.46e-05  elapsed=211.5s
+      epoch   14/16  loss=0.0910  acc=0.9710  lr=3.81e-06  elapsed=246.7s
+      epoch   16/16  loss=0.0986  acc=0.9716  lr=0.00e+00  elapsed=281.8s
+    [12:49:26] training done (281.8s)
+    [12:49:26] extracting train/good patch features (2585 images)...
+    -> 2026640 patch features  D=1024  4.15 GB CPU
+    [12:49:44] coreset (minibatch, batch=128): 101332 of 2026640
+      projecting features   1048576/2026640  ( 51.7%)  elapsed=0.2s
+      projecting features   2026640/2026640  (100.0%)  elapsed=0.3s
+      projected 2026640 features to 32-d on GPU in 0.4s (259.4 MB on GPU)
+      coreset (minibatch b=128): 4993/101332 (  4.9%)  max-min-dist=0.3904  round=39/792  elapsed=0.4s
+      coreset (minibatch b=128): 9985/101332 (  9.9%)  max-min-dist=0.3465  round=78/792  elapsed=0.8s
+      coreset (minibatch b=128): 14977/101332 ( 14.8%)  max-min-dist=0.3250  round=117/792  elapsed=1.2s
+      coreset (minibatch b=128): 19969/101332 ( 19.7%)  max-min-dist=0.3106  round=156/792  elapsed=1.5s
+      coreset (minibatch b=128): 24961/101332 ( 24.6%)  max-min-dist=0.3001  round=195/792  elapsed=1.9s
+      coreset (minibatch b=128): 29953/101332 ( 29.6%)  max-min-dist=0.2919  round=234/792  elapsed=2.3s
+      coreset (minibatch b=128): 34945/101332 ( 34.5%)  max-min-dist=0.2850  round=273/792  elapsed=2.7s
+      coreset (minibatch b=128): 39937/101332 ( 39.4%)  max-min-dist=0.2792  round=312/792  elapsed=3.1s
+      coreset (minibatch b=128): 44929/101332 ( 44.3%)  max-min-dist=0.2741  round=351/792  elapsed=3.5s
+      coreset (minibatch b=128): 49921/101332 ( 49.3%)  max-min-dist=0.2696  round=390/792  elapsed=3.8s
+      coreset (minibatch b=128): 54913/101332 ( 54.2%)  max-min-dist=0.2655  round=429/792  elapsed=4.2s
+      coreset (minibatch b=128): 59905/101332 ( 59.1%)  max-min-dist=0.2619  round=468/792  elapsed=4.6s
+      coreset (minibatch b=128): 64897/101332 ( 64.0%)  max-min-dist=0.2585  round=507/792  elapsed=5.0s
+      coreset (minibatch b=128): 69889/101332 ( 69.0%)  max-min-dist=0.2555  round=546/792  elapsed=5.4s
+      coreset (minibatch b=128): 74881/101332 ( 73.9%)  max-min-dist=0.2527  round=585/792  elapsed=5.8s
+      coreset (minibatch b=128): 79873/101332 ( 78.8%)  max-min-dist=0.2501  round=624/792  elapsed=6.2s
+      coreset (minibatch b=128): 84865/101332 ( 83.7%)  max-min-dist=0.2476  round=663/792  elapsed=6.5s
+      coreset (minibatch b=128): 89857/101332 ( 88.7%)  max-min-dist=0.2453  round=702/792  elapsed=6.9s
+      coreset (minibatch b=128): 94849/101332 ( 93.6%)  max-min-dist=0.2431  round=741/792  elapsed=7.3s
+      coreset (minibatch b=128): 99841/101332 ( 98.5%)  max-min-dist=0.2410  round=780/792  elapsed=7.7s
+      coreset (minibatch b=128): 101332/101332 (100.0%)  max-min-dist=0.2405  round=792/792  elapsed=7.8s
+    [12:49:53] memory bank: (101332, 1024) torch.float16
+
+--- local validation (tta=hvflip) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.4091 ± 0.3374
+    anomaly_02            5          0.5701 ± 0.3179
+    anomaly_03            5          0.6213 ± 0.3159
+    anomaly_04            5          0.6010 ± 0.3015
+    anomaly_05            5          0.4200 ± 0.3934
+    >>> class class_04 mean pixel-AP: 0.5243
+
+--- scoring 745 test images ---
+  class class_04 done in 5.5 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_05
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2640  train_anomaly=30  test=225
+    [auto-epoch] total_iters=2500 -> 16 epochs
+    [12:50:13] ViT mode: backbone FROZEN, head + projection trainable (1.12M)
+      epoch    2/16  loss=0.1749  acc=0.9423  lr=9.62e-05  elapsed=36.4s
+      epoch    4/16  loss=0.1254  acc=0.9598  lr=8.54e-05  elapsed=72.0s
+      epoch    6/16  loss=0.1292  acc=0.9559  lr=6.91e-05  elapsed=108.3s
+      epoch    8/16  loss=0.1154  acc=0.9610  lr=5.00e-05  elapsed=144.4s
+      epoch   10/16  loss=0.1134  acc=0.9646  lr=3.09e-05  elapsed=180.5s
+      epoch   12/16  loss=0.1092  acc=0.9670  lr=1.46e-05  elapsed=216.6s
+      epoch   14/16  loss=0.1081  acc=0.9670  lr=3.81e-06  elapsed=252.6s
+      epoch   16/16  loss=0.1002  acc=0.9706  lr=0.00e+00  elapsed=288.4s
+    [12:55:01] training done (288.4s)
+    [12:55:01] extracting train/good patch features (2640 images)...
+    -> 2069760 patch features  D=1024  4.24 GB CPU
+    [12:55:21] coreset (minibatch, batch=128): 103488 of 2069760
+      projecting features   1048576/2069760  ( 50.7%)  elapsed=0.2s
+      projecting features   2069760/2069760  (100.0%)  elapsed=0.3s
+      projected 2069760 features to 32-d on GPU in 0.4s (264.9 MB on GPU)
+      coreset (minibatch b=128): 5121/103488 (  4.9%)  max-min-dist=0.3526  round=40/809  elapsed=0.4s
+      coreset (minibatch b=128): 10241/103488 (  9.9%)  max-min-dist=0.3147  round=80/809  elapsed=0.8s
+      coreset (minibatch b=128): 15361/103488 ( 14.8%)  max-min-dist=0.2959  round=120/809  elapsed=1.2s
+      coreset (minibatch b=128): 20481/103488 ( 19.8%)  max-min-dist=0.2831  round=160/809  elapsed=1.6s
+      coreset (minibatch b=128): 25601/103488 ( 24.7%)  max-min-dist=0.2736  round=200/809  elapsed=2.0s
+      coreset (minibatch b=128): 30721/103488 ( 29.7%)  max-min-dist=0.2661  round=240/809  elapsed=2.4s
+      coreset (minibatch b=128): 35841/103488 ( 34.6%)  max-min-dist=0.2600  round=280/809  elapsed=2.8s
+      coreset (minibatch b=128): 40961/103488 ( 39.6%)  max-min-dist=0.2547  round=320/809  elapsed=3.2s
+      coreset (minibatch b=128): 46081/103488 ( 44.5%)  max-min-dist=0.2501  round=360/809  elapsed=3.6s
+      coreset (minibatch b=128): 51201/103488 ( 49.5%)  max-min-dist=0.2460  round=400/809  elapsed=4.0s
+      coreset (minibatch b=128): 56321/103488 ( 54.4%)  max-min-dist=0.2424  round=440/809  elapsed=4.4s
+      coreset (minibatch b=128): 61441/103488 ( 59.4%)  max-min-dist=0.2391  round=480/809  elapsed=4.8s
+      coreset (minibatch b=128): 66561/103488 ( 64.3%)  max-min-dist=0.2361  round=520/809  elapsed=5.2s
+      coreset (minibatch b=128): 71681/103488 ( 69.3%)  max-min-dist=0.2332  round=560/809  elapsed=5.6s
+      coreset (minibatch b=128): 76801/103488 ( 74.2%)  max-min-dist=0.2307  round=600/809  elapsed=6.0s
+      coreset (minibatch b=128): 81921/103488 ( 79.2%)  max-min-dist=0.2283  round=640/809  elapsed=6.4s
+      coreset (minibatch b=128): 87041/103488 ( 84.1%)  max-min-dist=0.2260  round=680/809  elapsed=6.9s
+      coreset (minibatch b=128): 92161/103488 ( 89.1%)  max-min-dist=0.2239  round=720/809  elapsed=7.3s
+      coreset (minibatch b=128): 97281/103488 ( 94.0%)  max-min-dist=0.2219  round=760/809  elapsed=7.7s
+      coreset (minibatch b=128): 102401/103488 ( 98.9%)  max-min-dist=0.2201  round=800/809  elapsed=8.1s
+      coreset (minibatch b=128): 103488/103488 (100.0%)  max-min-dist=0.2197  round=809/809  elapsed=8.1s
+    [12:55:29] memory bank: (103488, 1024) torch.float16
+
+--- local validation (tta=hvflip) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1951 ± 0.3901
+    anomaly_02            5          0.6118 ± 0.3266
+    anomaly_03            5          0.5260 ± 0.4297
+    anomaly_04            5          0.5822 ± 0.4755
+    anomaly_05            5          0.7022 ± 0.3546
+    anomaly_06            5          0.2625 ± 0.3393
+    >>> class class_05 mean pixel-AP: 0.4800
+
+--- scoring 225 test images ---
+  class class_05 done in 5.4 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_06
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2335  train_anomaly=35  test=1010
+    [auto-epoch] total_iters=2500 -> 18 epochs
+    [12:55:38] ViT mode: backbone FROZEN, head + projection trainable (1.12M)
+      epoch    2/18  loss=0.1522  acc=0.9532  lr=9.70e-05  elapsed=31.9s
+      epoch    4/18  loss=0.1179  acc=0.9640  lr=8.83e-05  elapsed=63.9s
+      epoch    6/18  loss=0.1001  acc=0.9703  lr=7.50e-05  elapsed=96.3s
+      epoch    8/18  loss=0.0912  acc=0.9722  lr=5.87e-05  elapsed=128.5s
+      epoch   10/18  loss=0.0887  acc=0.9742  lr=4.13e-05  elapsed=160.9s
+      epoch   12/18  loss=0.0712  acc=0.9803  lr=2.50e-05  elapsed=192.8s
+      epoch   14/18  loss=0.0729  acc=0.9794  lr=1.17e-05  elapsed=224.8s
+      epoch   16/18  loss=0.0682  acc=0.9810  lr=3.02e-06  elapsed=256.7s
+      epoch   18/18  loss=0.0697  acc=0.9813  lr=0.00e+00  elapsed=289.0s
+    [13:00:27] training done (289.0s)
+    [13:00:27] extracting train/good patch features (2335 images)...
+    -> 1830640 patch features  D=1024  3.75 GB CPU
+    [13:00:44] coreset (minibatch, batch=128): 91532 of 1830640
+      projecting features   1048576/1830640  ( 57.3%)  elapsed=0.2s
+      projecting features   1830640/1830640  (100.0%)  elapsed=0.3s
+      projected 1830640 features to 32-d on GPU in 0.3s (234.3 MB on GPU)
+      coreset (minibatch b=128): 4481/91532 (  4.9%)  max-min-dist=0.4083  round=35/716  elapsed=0.3s
+      coreset (minibatch b=128): 8961/91532 (  9.8%)  max-min-dist=0.3701  round=70/716  elapsed=0.6s
+      coreset (minibatch b=128): 13441/91532 ( 14.7%)  max-min-dist=0.3498  round=105/716  elapsed=0.9s
+      coreset (minibatch b=128): 17921/91532 ( 19.6%)  max-min-dist=0.3363  round=140/716  elapsed=1.2s
+      coreset (minibatch b=128): 22401/91532 ( 24.5%)  max-min-dist=0.3261  round=175/716  elapsed=1.6s
+      coreset (minibatch b=128): 26881/91532 ( 29.4%)  max-min-dist=0.3180  round=210/716  elapsed=1.9s
+      coreset (minibatch b=128): 31361/91532 ( 34.3%)  max-min-dist=0.3111  round=245/716  elapsed=2.2s
+      coreset (minibatch b=128): 35841/91532 ( 39.2%)  max-min-dist=0.3052  round=280/716  elapsed=2.5s
+      coreset (minibatch b=128): 40321/91532 ( 44.1%)  max-min-dist=0.3001  round=315/716  elapsed=2.8s
+      coreset (minibatch b=128): 44801/91532 ( 48.9%)  max-min-dist=0.2955  round=350/716  elapsed=3.1s
+      coreset (minibatch b=128): 49281/91532 ( 53.8%)  max-min-dist=0.2913  round=385/716  elapsed=3.4s
+      coreset (minibatch b=128): 53761/91532 ( 58.7%)  max-min-dist=0.2875  round=420/716  elapsed=3.7s
+      coreset (minibatch b=128): 58241/91532 ( 63.6%)  max-min-dist=0.2840  round=455/716  elapsed=4.1s
+      coreset (minibatch b=128): 62721/91532 ( 68.5%)  max-min-dist=0.2807  round=490/716  elapsed=4.4s
+      coreset (minibatch b=128): 67201/91532 ( 73.4%)  max-min-dist=0.2778  round=525/716  elapsed=4.7s
+      coreset (minibatch b=128): 71681/91532 ( 78.3%)  max-min-dist=0.2749  round=560/716  elapsed=5.0s
+      coreset (minibatch b=128): 76161/91532 ( 83.2%)  max-min-dist=0.2723  round=595/716  elapsed=5.3s
+      coreset (minibatch b=128): 80641/91532 ( 88.1%)  max-min-dist=0.2698  round=630/716  elapsed=5.6s
+      coreset (minibatch b=128): 85121/91532 ( 93.0%)  max-min-dist=0.2675  round=665/716  elapsed=5.9s
+      coreset (minibatch b=128): 89601/91532 ( 97.9%)  max-min-dist=0.2652  round=700/716  elapsed=6.2s
+      coreset (minibatch b=128): 91532/91532 (100.0%)  max-min-dist=0.2643  round=716/716  elapsed=6.4s
+    [13:00:51] memory bank: (91532, 1024) torch.float16
+
+--- local validation (tta=hvflip) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9619 ± 0.0148
+    anomaly_02            5          0.1447 ± 0.1014
+    anomaly_03            5          0.1829 ± 0.1534
+    anomaly_04            5          0.6061 ± 0.2222
+    anomaly_05            5          0.7423 ± 0.3713
+    anomaly_06            5          0.4456 ± 0.2517
+    anomaly_07            5          0.9573 ± 0.0290
+    >>> class class_06 mean pixel-AP: 0.5773
+
+--- scoring 1010 test images ---
+  class class_06 done in 5.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_07
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2145  train_anomaly=35  test=915
+    [auto-epoch] total_iters=2500 -> 19 epochs
+    [13:01:17] ViT mode: backbone FROZEN, head + projection trainable (1.12M)
+      epoch    2/19  loss=0.1671  acc=0.9445  lr=9.73e-05  elapsed=29.6s
+      epoch    4/19  loss=0.1274  acc=0.9590  lr=8.95e-05  elapsed=59.3s
+      epoch    6/19  loss=0.1071  acc=0.9657  lr=7.73e-05  elapsed=89.0s
+      epoch    8/19  loss=0.1101  acc=0.9621  lr=6.23e-05  elapsed=118.8s
+      epoch   10/19  loss=0.0947  acc=0.9708  lr=4.59e-05  elapsed=148.5s
+      epoch   12/19  loss=0.0865  acc=0.9722  lr=2.99e-05  elapsed=178.4s
+      epoch   14/19  loss=0.0791  acc=0.9782  lr=1.61e-05  elapsed=208.2s
+      epoch   16/19  loss=0.0780  acc=0.9781  lr=6.03e-06  elapsed=238.2s
+      epoch   18/19  loss=0.0823  acc=0.9759  lr=6.82e-07  elapsed=268.1s
+      epoch   19/19  loss=0.0719  acc=0.9810  lr=0.00e+00  elapsed=283.1s
+    [13:06:01] training done (283.1s)
+    [13:06:01] extracting train/good patch features (2145 images)...
+    -> 1681680 patch features  D=1024  3.44 GB CPU
+    [13:06:16] coreset (minibatch, batch=128): 84084 of 1681680
+      projecting features   1048576/1681680  ( 62.4%)  elapsed=0.2s
+      projecting features   1681680/1681680  (100.0%)  elapsed=0.3s
+      projected 1681680 features to 32-d on GPU in 0.3s (215.3 MB on GPU)
+      coreset (minibatch b=128): 4097/84084 (  4.9%)  max-min-dist=0.4438  round=32/657  elapsed=0.3s
+      coreset (minibatch b=128): 8193/84084 (  9.7%)  max-min-dist=0.4049  round=64/657  elapsed=0.5s
+      coreset (minibatch b=128): 12289/84084 ( 14.6%)  max-min-dist=0.3839  round=96/657  elapsed=0.8s
+      coreset (minibatch b=128): 16385/84084 ( 19.5%)  max-min-dist=0.3696  round=128/657  elapsed=1.1s
+      coreset (minibatch b=128): 20481/84084 ( 24.4%)  max-min-dist=0.3587  round=160/657  elapsed=1.3s
+      coreset (minibatch b=128): 24577/84084 ( 29.2%)  max-min-dist=0.3500  round=192/657  elapsed=1.6s
+      coreset (minibatch b=128): 28673/84084 ( 34.1%)  max-min-dist=0.3426  round=224/657  elapsed=1.8s
+      coreset (minibatch b=128): 32769/84084 ( 39.0%)  max-min-dist=0.3363  round=256/657  elapsed=2.1s
+      coreset (minibatch b=128): 36865/84084 ( 43.8%)  max-min-dist=0.3308  round=288/657  elapsed=2.4s
+      coreset (minibatch b=128): 40961/84084 ( 48.7%)  max-min-dist=0.3257  round=320/657  elapsed=2.6s
+      coreset (minibatch b=128): 45057/84084 ( 53.6%)  max-min-dist=0.3213  round=352/657  elapsed=2.9s
+      coreset (minibatch b=128): 49153/84084 ( 58.5%)  max-min-dist=0.3172  round=384/657  elapsed=3.1s
+      coreset (minibatch b=128): 53249/84084 ( 63.3%)  max-min-dist=0.3134  round=416/657  elapsed=3.4s
+      coreset (minibatch b=128): 57345/84084 ( 68.2%)  max-min-dist=0.3098  round=448/657  elapsed=3.7s
+      coreset (minibatch b=128): 61441/84084 ( 73.1%)  max-min-dist=0.3066  round=480/657  elapsed=3.9s
+      coreset (minibatch b=128): 65537/84084 ( 77.9%)  max-min-dist=0.3035  round=512/657  elapsed=4.2s
+      coreset (minibatch b=128): 69633/84084 ( 82.8%)  max-min-dist=0.3006  round=544/657  elapsed=4.5s
+      coreset (minibatch b=128): 73729/84084 ( 87.7%)  max-min-dist=0.2979  round=576/657  elapsed=4.7s
+      coreset (minibatch b=128): 77825/84084 ( 92.6%)  max-min-dist=0.2953  round=608/657  elapsed=5.0s
+      coreset (minibatch b=128): 81921/84084 ( 97.4%)  max-min-dist=0.2928  round=640/657  elapsed=5.2s
+      coreset (minibatch b=128): 84084/84084 (100.0%)  max-min-dist=0.2915  round=657/657  elapsed=5.4s
+    [13:06:22] memory bank: (84084, 1024) torch.float16
+
+--- local validation (tta=hvflip) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7283 ± 0.3643
+    anomaly_02            5          0.2936 ± 0.2471
+    anomaly_03            5          0.6721 ± 0.0450
+    anomaly_04            5          0.1770 ± 0.0949
+    anomaly_05            5          0.4937 ± 0.2638
+    anomaly_06            5          0.1006 ± 0.0678
+    anomaly_07            5          0.3419 ± 0.2256
+    >>> class class_07 mean pixel-AP: 0.4010
+
+--- scoring 915 test images ---
+  class class_07 done in 5.5 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_08
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2045  train_anomaly=35  test=960
+    [auto-epoch] total_iters=2500 -> 20 epochs
+    [13:06:45] ViT mode: backbone FROZEN, head + projection trainable (1.12M)
+      epoch    2/20  loss=0.1061  acc=0.9700  lr=9.76e-05  elapsed=28.7s
+      epoch    4/20  loss=0.0729  acc=0.9800  lr=9.05e-05  elapsed=57.2s
+      epoch    6/20  loss=0.0631  acc=0.9816  lr=7.94e-05  elapsed=85.4s
+      epoch    8/20  loss=0.0587  acc=0.9839  lr=6.55e-05  elapsed=114.1s
+      epoch   10/20  loss=0.0483  acc=0.9858  lr=5.00e-05  elapsed=143.0s
+      epoch   12/20  loss=0.0439  acc=0.9853  lr=3.45e-05  elapsed=171.5s
+      epoch   14/20  loss=0.0384  acc=0.9902  lr=2.06e-05  elapsed=199.8s
+      epoch   16/20  loss=0.0464  acc=0.9868  lr=9.55e-06  elapsed=228.6s
+      epoch   18/20  loss=0.0391  acc=0.9891  lr=2.45e-06  elapsed=257.5s
+      epoch   20/20  loss=0.0333  acc=0.9917  lr=0.00e+00  elapsed=286.4s
+    [13:11:31] training done (286.4s)
+    [13:11:31] extracting train/good patch features (2045 images)...
+    -> 1603280 patch features  D=1024  3.28 GB CPU
+    [13:11:46] coreset (minibatch, batch=128): 80164 of 1603280
+      projecting features   1048576/1603280  ( 65.4%)  elapsed=0.2s
+      projecting features   1603280/1603280  (100.0%)  elapsed=0.3s
+      projected 1603280 features to 32-d on GPU in 0.3s (205.2 MB on GPU)
+      coreset (minibatch b=128): 3969/80164 (  5.0%)  max-min-dist=0.3416  round=31/627  elapsed=0.2s
+      coreset (minibatch b=128): 7937/80164 (  9.9%)  max-min-dist=0.3006  round=62/627  elapsed=0.5s
+      coreset (minibatch b=128): 11905/80164 ( 14.9%)  max-min-dist=0.2811  round=93/627  elapsed=0.7s
+      coreset (minibatch b=128): 15873/80164 ( 19.8%)  max-min-dist=0.2685  round=124/627  elapsed=1.0s
+      coreset (minibatch b=128): 19841/80164 ( 24.8%)  max-min-dist=0.2592  round=155/627  elapsed=1.2s
+      coreset (minibatch b=128): 23809/80164 ( 29.7%)  max-min-dist=0.2517  round=186/627  elapsed=1.5s
+      coreset (minibatch b=128): 27777/80164 ( 34.7%)  max-min-dist=0.2456  round=217/627  elapsed=1.7s
+      coreset (minibatch b=128): 31745/80164 ( 39.6%)  max-min-dist=0.2405  round=248/627  elapsed=1.9s
+      coreset (minibatch b=128): 35713/80164 ( 44.5%)  max-min-dist=0.2360  round=279/627  elapsed=2.2s
+      coreset (minibatch b=128): 39681/80164 ( 49.5%)  max-min-dist=0.2319  round=310/627  elapsed=2.4s
+      coreset (minibatch b=128): 43649/80164 ( 54.4%)  max-min-dist=0.2282  round=341/627  elapsed=2.7s
+      coreset (minibatch b=128): 47617/80164 ( 59.4%)  max-min-dist=0.2249  round=372/627  elapsed=2.9s
+      coreset (minibatch b=128): 51585/80164 ( 64.3%)  max-min-dist=0.2219  round=403/627  elapsed=3.2s
+      coreset (minibatch b=128): 55553/80164 ( 69.3%)  max-min-dist=0.2191  round=434/627  elapsed=3.4s
+      coreset (minibatch b=128): 59521/80164 ( 74.2%)  max-min-dist=0.2166  round=465/627  elapsed=3.6s
+      coreset (minibatch b=128): 63489/80164 ( 79.2%)  max-min-dist=0.2142  round=496/627  elapsed=3.9s
+      coreset (minibatch b=128): 67457/80164 ( 84.1%)  max-min-dist=0.2119  round=527/627  elapsed=4.1s
+      coreset (minibatch b=128): 71425/80164 ( 89.1%)  max-min-dist=0.2098  round=558/627  elapsed=4.4s
+      coreset (minibatch b=128): 75393/80164 ( 94.0%)  max-min-dist=0.2078  round=589/627  elapsed=4.6s
+      coreset (minibatch b=128): 79361/80164 ( 99.0%)  max-min-dist=0.2059  round=620/627  elapsed=4.9s
+      coreset (minibatch b=128): 80164/80164 (100.0%)  max-min-dist=0.2055  round=627/627  elapsed=4.9s
+    [13:11:52] memory bank: (80164, 1024) torch.float16
+
+--- local validation (tta=hvflip) ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9423 ± 0.0249
+    anomaly_02            5          0.6001 ± 0.1990
+    anomaly_03            5          0.9772 ± 0.0047
+    anomaly_04            5          0.1909 ± 0.3817
+    anomaly_05            5          0.1362 ± 0.2723
+    anomaly_06            5          0.8328 ± 0.0128
+    anomaly_07            5          0.1031 ± 0.2063
+    >>> class class_08 mean pixel-AP: 0.5404
+
+--- scoring 960 test images ---
+  class class_08 done in 5.5 min
+[local_preds_saver] saved 235 predictions (392x392, ~10.02% positive pixels)
+[local_preds_saver]   score range: [0.008907, 0.261]  (stored as-is, no clipping)
+[local_preds_saver]   wrote -> /workspace/anomaly-detection/baseline_out/runs/20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562/local_predictions.npz
+
+==============================================================================
+  LOCAL VALIDATION SUMMARY
+==============================================================================
+  class_01            0.5560          5.6
+  class_02            0.5346          5.3
+  class_03            0.2433          5.3
+  class_04            0.5243          5.5
+  class_05            0.4800          5.4
+  class_06            0.5773          5.6
+  class_07            0.4010          5.5
+  class_08            0.5404          5.5
+  OVERALL             0.4821
+  saved per-(class, anomaly_type) AP -> /workspace/anomaly-detection/baseline_out/runs/20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562/local_eval.csv
+
+==============================================================================
+  SUBMISSION
+==============================================================================
+    saved 5910 test predictions (224x224, range [0.004227, 0.2775]) -> /workspace/anomaly-detection/baseline_out/runs/20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562/test_predictions.npz
+
+--- calibrating scores and writing submission.csv ---
+    global score calibration  lo=0.0142  hi=0.1040
+    wrote 5910 rows -> /workspace/anomaly-detection/baseline_out/runs/20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562/submission.csv
+    zipped         -> /workspace/anomaly-detection/baseline_out/runs/20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562/submission.zip
+
+  Upload: /workspace/anomaly-detection/baseline_out/runs/20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562/submission.zip
+  ablation row appended -> /workspace/anomaly-detection/baseline_out/ablation_master.csv
+
+██████████████████████████████████████████████████████████████████████████████
+  DONE — run_id=20260521-122829_cutpaste-pcnn_dnv2b14r_in392_it2500_bs16_pc_cs05mb128_tta-hvflip_retrain-exp8c-vit-dnv2reg_81b562
+██████████████████████████████████████████████████████████████████████████████

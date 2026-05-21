@@ -1,0 +1,29 @@
+{
+  "data_root": "/workspace/anomaly-detection/data",
+  "report_dir": "/workspace/anomaly-detection/baseline_out",
+  "teacher_backbone": "dinov2_vitb14_reg",
+  "teacher_layers": [
+    9
+  ],
+  "input_size": 392,
+  "amap_mode": "mul",
+  "epochs": 200,
+  "total_iters": 2500,
+  "batch_size": 8,
+  "lr": 0.0005,
+  "beta1": 0.5,
+  "beta2": 0.999,
+  "weight_decay": 0.0,
+  "amp": true,
+  "num_workers": 8,
+  "score_batch_size": 8,
+  "smooth_sigma": 1.5,
+  "tta": "hvflip",
+  "seed": 0,
+  "only_classes": [],
+  "skip_eval": false,
+  "skip_submission": false,
+  "save_checkpoints": false,
+  "zip_submission": true,
+  "run_tag": "rd-vit-dnv2reg"
+}

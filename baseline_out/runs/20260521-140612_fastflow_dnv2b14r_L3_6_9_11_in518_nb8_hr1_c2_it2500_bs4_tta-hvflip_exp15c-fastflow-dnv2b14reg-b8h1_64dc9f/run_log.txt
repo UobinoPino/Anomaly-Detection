@@ -1,0 +1,336 @@
+
+██████████████████████████████████████████████████████████████████████████████
+  FASTFLOW — RUN 20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f
+██████████████████████████████████████████████████████████████████████████████
+  data_root        : /workspace/anomaly-detection/data
+  run_dir          : /workspace/anomaly-detection/baseline_out/runs/20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f
+  backbone         : dinov2_vitb14_reg
+  feature_layers   : [3, 6, 9, 11]
+  input_size       : 518
+  flow blocks      : 8  hidden_ratio=1.0  clamp=2.0
+  total_iters      : 2500
+  batch_size       : 4
+  lr / wd          : 0.001 / 1e-05
+  amp (backbone)   : True
+  amp (flow)       : False  (off by default; flow numerics are delicate)
+  smooth_sigma     : 1.5
+  tta              : hvflip
+  device           : cuda
+                    NVIDIA GeForce RTX 4090, 25.3 GB
+
+  channels per scale: {3: 768, 6: 768, 9: 768, 11: 768}
+
+  running on 8 class(es): class_01, class_02, class_03, class_04, class_05, class_06, class_07, class_08
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_01
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2600  train_anomaly=25  test=465
+  FastFlow: scales=[3, 6, 9, 11]  channels=[768, 768, 768, 768]  n_blocks=8  params=273.75M
+    [auto-epoch] total_iters=2500 / 650 iters/epoch -> 4 epochs
+    [14:06:24] training: 4 epochs x 650 iters (2600 total)  bs=4  scales=[3, 6, 9, 11]  n_blocks=8  hidden_ratio=1.0  clamp=2.0
+      epoch   1/4  loss=162655.8069  L3=223291.45  L6=397235.40  L9=27468.49  L11=2627.89  lr=8.54e-04  elapsed=127.6s
+      epoch   2/4  loss=-527.9123  L3=-771.89  L6=-356.73  L9=-368.19  L11=-614.84  lr=5.00e-04  elapsed=253.7s
+      epoch   3/4  loss=-622.1717  L3=-895.84  L6=-444.19  L9=-442.37  L11=-706.29  lr=1.46e-04  elapsed=379.9s
+      epoch   4/4  loss=-672.7357  L3=-954.88  L6=-487.69  L9=-484.75  L11=-763.62  lr=0.00e+00  elapsed=506.1s
+    [14:14:50] training done (506.1s)
+    [14:14:50] computing per-scale NLL stats...
+    norm stats scale 3: NLL=-961.832 ± 184.536
+    norm stats scale 6: NLL=-491.068 ± 178.139
+    norm stats scale 9: NLL=-481.345 ± 199.434
+    norm stats scale 11: NLL=-765.017 ± 146.479
+
+--- local validation  tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7375 ± 0.3694
+    anomaly_02            5          0.9405 ± 0.0224
+    anomaly_03            5          0.3475 ± 0.3389
+    anomaly_04            5          0.8408 ± 0.1398
+    anomaly_05            5          0.1786 ± 0.3572
+    >>> class class_01 mean pixel-AP: 0.6090
+
+--- scoring 465 test images  tta=hvflip ---
+      scored 200/465
+      scored 400/465
+  class class_01 done in 9.1 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_02
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2135  train_anomaly=30  test=800
+  FastFlow: scales=[3, 6, 9, 11]  channels=[768, 768, 768, 768]  n_blocks=8  params=273.75M
+    [auto-epoch] total_iters=2500 / 533 iters/epoch -> 5 epochs
+    [14:15:32] training: 5 epochs x 533 iters (2665 total)  bs=4  scales=[3, 6, 9, 11]  n_blocks=8  hidden_ratio=1.0  clamp=2.0
+      epoch   1/5  loss=225931.3710  L3=399860.11  L6=442786.54  L9=50369.91  L11=10708.91  lr=9.05e-04  elapsed=103.8s
+      epoch   2/5  loss=-379.9074  L3=-510.09  L6=-245.32  L9=-279.83  L11=-484.40  lr=6.55e-04  elapsed=207.2s
+      epoch   3/5  loss=-462.4733  L3=-611.95  L6=-313.03  L9=-355.43  L11=-569.47  lr=3.45e-04  elapsed=310.6s
+      epoch   4/5  loss=-522.6913  L3=-683.73  L6=-364.49  L9=-408.94  L11=-633.61  lr=9.55e-05  elapsed=414.1s
+      epoch   5/5  loss=-555.8183  L3=-720.34  L6=-392.95  L9=-438.67  L11=-671.31  lr=0.00e+00  elapsed=517.6s
+    [14:24:09] training done (517.6s)
+    [14:24:09] computing per-scale NLL stats...
+    norm stats scale 3: NLL=-722.725 ± 178.886
+    norm stats scale 6: NLL=-400.560 ± 155.623
+    norm stats scale 9: NLL=-445.636 ± 172.016
+    norm stats scale 11: NLL=-674.605 ± 119.479
+
+--- local validation  tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.8605 ± 0.1185
+    anomaly_02            5          0.7301 ± 0.3688
+    anomaly_03            5          0.7003 ± 0.1294
+    anomaly_04            5          0.6082 ± 0.1383
+    anomaly_05            5          0.0286 ± 0.0572
+    anomaly_06            5          0.1851 ± 0.3702
+    >>> class class_02 mean pixel-AP: 0.5188
+
+--- scoring 800 test images  tta=hvflip ---
+      scored 200/800
+      scored 400/800
+      scored 600/800
+      scored 800/800
+  class class_02 done in 9.5 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_03
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2520  train_anomaly=20  test=790
+  FastFlow: scales=[3, 6, 9, 11]  channels=[768, 768, 768, 768]  n_blocks=8  params=273.75M
+    [auto-epoch] total_iters=2500 / 630 iters/epoch -> 4 epochs
+    [14:24:59] training: 4 epochs x 630 iters (2520 total)  bs=4  scales=[3, 6, 9, 11]  n_blocks=8  hidden_ratio=1.0  clamp=2.0
+      epoch   1/4  loss=229224.0857  L3=417366.24  L6=459044.58  L9=36290.35  L11=4195.14  lr=8.54e-04  elapsed=122.6s
+      epoch   2/4  loss=-458.3437  L3=-630.25  L6=-299.11  L9=-298.20  L11=-605.81  lr=5.00e-04  elapsed=244.9s
+      epoch   3/4  loss=-555.1761  L3=-744.38  L6=-383.92  L9=-388.28  L11=-704.12  lr=1.46e-04  elapsed=367.3s
+      epoch   4/4  loss=-608.9481  L3=-805.58  L6=-428.39  L9=-436.01  L11=-765.82  lr=0.00e+00  elapsed=489.6s
+    [14:33:09] training done (489.6s)
+    [14:33:09] computing per-scale NLL stats...
+    norm stats scale 3: NLL=-845.041 ± 279.806
+    norm stats scale 6: NLL=-450.103 ± 208.583
+    norm stats scale 9: NLL=-455.436 ± 217.231
+    norm stats scale 11: NLL=-775.564 ± 204.588
+
+--- local validation  tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.2085 ± 0.1206
+    anomaly_02            5          0.2596 ± 0.2942
+    anomaly_03            5          0.3055 ± 0.3793
+    anomaly_04            5          0.1482 ± 0.2964
+    >>> class class_03 mean pixel-AP: 0.2305
+
+--- scoring 790 test images  tta=hvflip ---
+      scored 200/790
+      scored 400/790
+      scored 600/790
+  class class_03 done in 9.0 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_04
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2585  train_anomaly=25  test=745
+  FastFlow: scales=[3, 6, 9, 11]  channels=[768, 768, 768, 768]  n_blocks=8  params=273.75M
+    [auto-epoch] total_iters=2500 / 646 iters/epoch -> 4 epochs
+    [14:33:58] training: 4 epochs x 646 iters (2584 total)  bs=4  scales=[3, 6, 9, 11]  n_blocks=8  hidden_ratio=1.0  clamp=2.0
+      epoch   1/4  loss=193441.1298  L3=315760.71  L6=407270.72  L9=45341.49  L11=5391.60  lr=8.54e-04  elapsed=125.9s
+      epoch   2/4  loss=-387.0444  L3=-571.93  L6=-231.35  L9=-258.53  L11=-486.38  lr=5.00e-04  elapsed=251.4s
+      epoch   3/4  loss=-472.9391  L3=-676.57  L6=-311.13  L9=-336.77  L11=-567.29  lr=1.46e-04  elapsed=376.8s
+      epoch   4/4  loss=-520.0078  L3=-732.72  L6=-353.42  L9=-379.66  L11=-614.24  lr=0.00e+00  elapsed=502.4s
+    [14:42:20] training done (502.4s)
+    [14:42:20] computing per-scale NLL stats...
+    norm stats scale 3: NLL=-739.904 ± 138.690
+    norm stats scale 6: NLL=-357.083 ± 164.041
+    norm stats scale 9: NLL=-377.008 ± 199.809
+    norm stats scale 11: NLL=-611.421 ± 170.795
+
+--- local validation  tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.4151 ± 0.3460
+    anomaly_02            5          0.6141 ± 0.3117
+    anomaly_03            5          0.5608 ± 0.2820
+    anomaly_04            5          0.5291 ± 0.2913
+    anomaly_05            5          0.4207 ± 0.4004
+    >>> class class_04 mean pixel-AP: 0.5079
+
+--- scoring 745 test images  tta=hvflip ---
+      scored 200/745
+      scored 400/745
+      scored 600/745
+  class class_04 done in 9.2 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_05
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2640  train_anomaly=30  test=225
+  FastFlow: scales=[3, 6, 9, 11]  channels=[768, 768, 768, 768]  n_blocks=8  params=273.75M
+    [auto-epoch] total_iters=2500 / 660 iters/epoch -> 4 epochs
+    [14:43:07] training: 4 epochs x 660 iters (2640 total)  bs=4  scales=[3, 6, 9, 11]  n_blocks=8  hidden_ratio=1.0  clamp=2.0
+      epoch   1/4  loss=226546.9309  L3=385305.02  L6=482738.41  L9=33733.77  L11=4410.58  lr=8.54e-04  elapsed=128.6s
+      epoch   2/4  loss=-435.1152  L3=-643.72  L6=-297.72  L9=-255.98  L11=-543.04  lr=5.00e-04  elapsed=256.7s
+      epoch   3/4  loss=-518.7620  L3=-752.94  L6=-384.90  L9=-303.16  L11=-634.05  lr=1.46e-04  elapsed=384.9s
+      epoch   4/4  loss=-576.5031  L3=-810.34  L6=-432.19  L9=-376.44  L11=-687.05  lr=0.00e+00  elapsed=513.1s
+    [14:51:40] training done (513.1s)
+    [14:51:40] computing per-scale NLL stats...
+    norm stats scale 3: NLL=-818.855 ± 181.121
+    norm stats scale 6: NLL=-437.501 ± 165.545
+    norm stats scale 9: NLL=-378.855 ± 182.968
+    norm stats scale 11: NLL=-689.645 ± 142.817
+
+--- local validation  tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1908 ± 0.3817
+    anomaly_02            5          0.4989 ± 0.2865
+    anomaly_03            5          0.4606 ± 0.3789
+    anomaly_04            5          0.5522 ± 0.4511
+    anomaly_05            5          0.6371 ± 0.3330
+    anomaly_06            5          0.1827 ± 0.2863
+    >>> class class_05 mean pixel-AP: 0.4204
+
+--- scoring 225 test images  tta=hvflip ---
+      scored 200/225
+  class class_05 done in 8.9 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_06
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2335  train_anomaly=35  test=1010
+  FastFlow: scales=[3, 6, 9, 11]  channels=[768, 768, 768, 768]  n_blocks=8  params=273.75M
+    [auto-epoch] total_iters=2500 / 583 iters/epoch -> 5 epochs
+    [14:51:58] training: 5 epochs x 583 iters (2915 total)  bs=4  scales=[3, 6, 9, 11]  n_blocks=8  hidden_ratio=1.0  clamp=2.0
+      epoch   1/5  loss=224878.1256  L3=288381.51  L6=562388.18  L9=37574.98  L11=11167.84  lr=9.05e-04  elapsed=113.7s
+      epoch   2/5  loss=-306.5476  L3=-525.01  L6=-165.04  L9=-177.48  L11=-358.66  lr=6.55e-04  elapsed=227.0s
+      epoch   3/5  loss=-378.8779  L3=-619.57  L6=-228.28  L9=-240.94  L11=-426.72  lr=3.45e-04  elapsed=340.3s
+      epoch   4/5  loss=-431.9432  L3=-683.50  L6=-272.74  L9=-288.04  L11=-483.49  lr=9.55e-05  elapsed=453.7s
+      epoch   5/5  loss=-461.9930  L3=-714.99  L6=-297.76  L9=-315.64  L11=-519.58  lr=0.00e+00  elapsed=567.0s
+    [15:01:25] training done (567.0s)
+    [15:01:26] computing per-scale NLL stats...
+    norm stats scale 3: NLL=-720.459 ± 154.903
+    norm stats scale 6: NLL=-306.206 ± 170.121
+    norm stats scale 9: NLL=-329.218 ± 185.508
+    norm stats scale 11: NLL=-536.915 ± 141.684
+
+--- local validation  tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.9430 ± 0.0237
+    anomaly_02            5          0.1887 ± 0.1840
+    anomaly_03            5          0.5650 ± 0.3011
+    anomaly_04            5          0.5777 ± 0.1828
+    anomaly_05            5          0.7292 ± 0.3666
+    anomaly_06            5          0.3774 ± 0.1966
+    anomaly_07            5          0.9740 ± 0.0084
+    >>> class class_06 mean pixel-AP: 0.6222
+
+--- scoring 1010 test images  tta=hvflip ---
+      scored 200/1010
+      scored 400/1010
+      scored 600/1010
+      scored 800/1010
+      scored 1000/1010
+  class class_06 done in 10.5 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_07
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2145  train_anomaly=35  test=915
+  FastFlow: scales=[3, 6, 9, 11]  channels=[768, 768, 768, 768]  n_blocks=8  params=273.75M
+    [auto-epoch] total_iters=2500 / 536 iters/epoch -> 5 epochs
+    [15:02:28] training: 5 epochs x 536 iters (2680 total)  bs=4  scales=[3, 6, 9, 11]  n_blocks=8  hidden_ratio=1.0  clamp=2.0
+      epoch   1/5  loss=209023.9700  L3=293672.32  L6=469003.05  L9=64534.71  L11=8885.75  lr=9.05e-04  elapsed=104.6s
+      epoch   2/5  loss=-230.6854  L3=-452.17  L6=-37.82  L9=-113.09  L11=-319.67  lr=6.55e-04  elapsed=208.8s
+      epoch   3/5  loss=-297.2025  L3=-547.46  L6=-85.09  L9=-173.13  L11=-383.12  lr=3.45e-04  elapsed=312.9s
+      epoch   4/5  loss=-345.1624  L3=-612.79  L6=-119.48  L9=-216.29  L11=-432.09  lr=9.55e-05  elapsed=417.0s
+      epoch   5/5  loss=-372.3564  L3=-645.17  L6=-138.75  L9=-242.19  L11=-463.32  lr=0.00e+00  elapsed=521.2s
+    [15:11:09] training done (521.2s)
+    [15:11:09] computing per-scale NLL stats...
+    norm stats scale 3: NLL=-647.260 ± 125.127
+    norm stats scale 6: NLL=-141.094 ± 121.570
+    norm stats scale 9: NLL=-250.351 ± 170.737
+    norm stats scale 11: NLL=-476.043 ± 122.981
+
+--- local validation  tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7384 ± 0.3672
+    anomaly_02            5          0.2708 ± 0.2603
+    anomaly_03            5          0.6267 ± 0.0898
+    anomaly_04            5          0.1391 ± 0.0752
+    anomaly_05            5          0.4903 ± 0.2186
+    anomaly_06            5          0.1091 ± 0.0741
+    anomaly_07            5          0.7567 ± 0.1228
+    >>> class class_07 mean pixel-AP: 0.4473
+
+--- scoring 915 test images  tta=hvflip ---
+      scored 200/915
+      scored 400/915
+      scored 600/915
+      scored 800/915
+  class class_07 done in 9.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_08
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2045  train_anomaly=35  test=960
+  FastFlow: scales=[3, 6, 9, 11]  channels=[768, 768, 768, 768]  n_blocks=8  params=273.75M
+    [auto-epoch] total_iters=2500 / 511 iters/epoch -> 5 epochs
+    [15:12:07] training: 5 epochs x 511 iters (2555 total)  bs=4  scales=[3, 6, 9, 11]  n_blocks=8  hidden_ratio=1.0  clamp=2.0
+      epoch   1/5  loss=286263.5850  L3=471550.82  L6=603699.68  L9=62203.68  L11=7600.13  lr=9.05e-04  elapsed=99.9s
+      epoch   2/5  loss=-504.0509  L3=-703.31  L6=-336.58  L9=-327.20  L11=-649.12  lr=6.55e-04  elapsed=199.3s
+      epoch   3/5  loss=-599.4283  L3=-817.06  L6=-415.89  L9=-420.28  L11=-744.49  lr=3.45e-04  elapsed=298.7s
+      epoch   4/5  loss=-666.6428  L3=-892.11  L6=-467.87  L9=-488.46  L11=-818.14  lr=9.55e-05  elapsed=398.0s
+      epoch   5/5  loss=-702.4079  L3=-929.51  L6=-496.00  L9=-523.76  L11=-860.36  lr=0.00e+00  elapsed=497.4s
+    [15:20:24] training done (497.4s)
+    [15:20:24] computing per-scale NLL stats...
+    norm stats scale 3: NLL=-937.539 ± 201.491
+    norm stats scale 6: NLL=-499.176 ± 205.664
+    norm stats scale 9: NLL=-527.598 ± 197.679
+    norm stats scale 11: NLL=-863.168 ± 167.505
+
+--- local validation  tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.8913 ± 0.0313
+    anomaly_02            5          0.4771 ± 0.1988
+    anomaly_03            5          0.9597 ± 0.0091
+    anomaly_04            5          0.1901 ± 0.3802
+    anomaly_05            5          0.1461 ± 0.2922
+    anomaly_06            5          0.7553 ± 0.0757
+    anomaly_07            5          0.1530 ± 0.3060
+    >>> class class_08 mean pixel-AP: 0.5104
+
+--- scoring 960 test images  tta=hvflip ---
+      scored 200/960
+      scored 400/960
+      scored 600/960
+      scored 800/960
+  class class_08 done in 9.3 min
+[local_preds_saver] saved 235 predictions (518x518, ~10.03% positive pixels)
+[local_preds_saver]   score range: [-3.311, 7.741]  (stored as-is, no clipping)
+[local_preds_saver]   wrote -> /workspace/anomaly-detection/baseline_out/runs/20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f/local_predictions.npz
+
+==============================================================================
+  LOCAL VALIDATION SUMMARY
+==============================================================================
+  class        mean pixel-AP   time (min)
+  class_01            0.6090          9.1
+  class_02            0.5188          9.5
+  class_03            0.2305          9.0
+  class_04            0.5079          9.2
+  class_05            0.4204          8.9
+  class_06            0.6222         10.5
+  class_07            0.4473          9.6
+  class_08            0.5104          9.3
+  OVERALL             0.4833
+  saved per-(class, anomaly_type) AP -> /workspace/anomaly-detection/baseline_out/runs/20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f/local_eval.csv
+
+==============================================================================
+  SUBMISSION
+==============================================================================
+    saved 5910 test predictions (224x224, range [-3.971, 8.251]) -> /workspace/anomaly-detection/baseline_out/runs/20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f/test_predictions.npz
+
+--- calibrating scores and writing submission.csv ---
+    global score calibration  lo=-1.6357  hi=4.3577
+    wrote 5910 rows -> /workspace/anomaly-detection/baseline_out/runs/20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f/submission.csv
+    zipped         -> /workspace/anomaly-detection/baseline_out/runs/20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f/submission.zip
+
+  Upload: /workspace/anomaly-detection/baseline_out/runs/20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f/submission.zip
+
+  ablation row appended -> /workspace/anomaly-detection/baseline_out/ablation_master.csv
+
+██████████████████████████████████████████████████████████████████████████████
+  DONE — run_id=20260521-140612_fastflow_dnv2b14r_L3_6_9_11_in518_nb8_hr1_c2_it2500_bs4_tta-hvflip_exp15c-fastflow-dnv2b14reg-b8h1_64dc9f
+██████████████████████████████████████████████████████████████████████████████

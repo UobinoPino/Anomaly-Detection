@@ -1,0 +1,279 @@
+
+██████████████████████████████████████████████████████████████████████████████
+  DINO-DPMM — RUN 20260521-165643_dpmm_dnv2b14r_b9_in392_pca64_K30_diag_p0.01_tta-hvflip_dpmm-diag64-dnv2reg_252889
+██████████████████████████████████████████████████████████████████████████████
+  backbone          : dinov2_vitb14_reg
+  block_indices     : [9]
+  input_size        : 392
+  pca_dim           : 64
+  dpmm K_max        : 30  cov=diag  prior=0.01
+  max_iter          : 200
+  smooth_sigma      : 1.5    tta: hvflip
+  device            : cuda
+                     NVIDIA L4, 23.7 GB
+Downloading: "https://dl.fbaipublicfiles.com/dinov2/dinov2_vitb14/dinov2_vitb14_reg4_pretrain.pth" to /work/u10813429/.cache/torch/hub/checkpoints/dinov2_vitb14_reg4_pretrain.pth
+
+  features per patch: 768 (1 block(s) × 768)
+
+  running on 8 class(es): class_01, class_02, class_03, class_04, class_05, class_06, class_07, class_08
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_01
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2600  train_anomaly=25  test=465
+    [16:56:54] extracting train_good patch features...
+    -> 2038400 patches × 768 dim  feature_hw=(28, 28)
+    [16:57:11] fitting PCA to 64 dims...
+      PCA cumulative explained variance (64 dims): 0.871
+      DPMM fit on 30000 subsampled patches (of 2038400)
+    [16:57:13] fitting DPMM (max_components=30, cov=diag, prior=0.01)...
+    DPMM fit done in 7.2s; effective components (w>1e-3): 29/30  (converged=True)
+
+--- local validation  tta=hvflip  K_eff=29/30 ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.3251 ± 0.1956
+    anomaly_02            5          0.3844 ± 0.0655
+    anomaly_03            5          0.0689 ± 0.0602
+    anomaly_04            5          0.3921 ± 0.1379
+    anomaly_05            5          0.1495 ± 0.2990
+    >>> class class_01 mean pixel-AP: 0.2640
+
+--- scoring 465 test images  tta=hvflip ---
+      scored 200/465
+      scored 400/465
+  class class_01 done in 0.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_02
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2135  train_anomaly=30  test=800
+    [16:57:31] extracting train_good patch features...
+    -> 1673840 patches × 768 dim  feature_hw=(28, 28)
+    [16:57:46] fitting PCA to 64 dims...
+      PCA cumulative explained variance (64 dims): 0.860
+      DPMM fit on 30000 subsampled patches (of 1673840)
+    [16:57:47] fitting DPMM (max_components=30, cov=diag, prior=0.01)...
+    DPMM fit done in 2.9s; effective components (w>1e-3): 30/30  (converged=True)
+
+--- local validation  tta=hvflip  K_eff=30/30 ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.8292 ± 0.1386
+    anomaly_02            5          0.1954 ± 0.1158
+    anomaly_03            5          0.6032 ± 0.1006
+    anomaly_04            5          0.4315 ± 0.1344
+    anomaly_05            5          0.0161 ± 0.0323
+    anomaly_06            5          0.0687 ± 0.1374
+    >>> class class_02 mean pixel-AP: 0.3574
+
+--- scoring 800 test images  tta=hvflip ---
+      scored 200/800
+      scored 400/800
+      scored 600/800
+      scored 800/800
+  class class_02 done in 0.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_03
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2520  train_anomaly=20  test=790
+    [16:58:08] extracting train_good patch features...
+    -> 1975680 patches × 768 dim  feature_hw=(28, 28)
+    [16:58:26] fitting PCA to 64 dims...
+      PCA cumulative explained variance (64 dims): 0.856
+      DPMM fit on 30000 subsampled patches (of 1975680)
+    [16:58:27] fitting DPMM (max_components=30, cov=diag, prior=0.01)...
+    DPMM fit done in 8.8s; effective components (w>1e-3): 25/30  (converged=False)
+
+--- local validation  tta=hvflip  K_eff=25/30 ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1329 ± 0.1037
+    anomaly_02            5          0.3365 ± 0.2868
+    anomaly_03            5          0.0467 ± 0.0572
+    anomaly_04            5          0.0731 ± 0.1461
+    >>> class class_03 mean pixel-AP: 0.1473
+
+--- scoring 790 test images  tta=hvflip ---
+      scored 200/790
+      scored 400/790
+      scored 600/790
+  class class_03 done in 0.8 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_04
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2585  train_anomaly=25  test=745
+    [16:58:53] extracting train_good patch features...
+    -> 2026640 patches × 768 dim  feature_hw=(28, 28)
+    [16:59:11] fitting PCA to 64 dims...
+      PCA cumulative explained variance (64 dims): 0.848
+      DPMM fit on 30000 subsampled patches (of 2026640)
+    [16:59:12] fitting DPMM (max_components=30, cov=diag, prior=0.01)...
+    DPMM fit done in 8.9s; effective components (w>1e-3): 25/30  (converged=False)
+
+--- local validation  tta=hvflip  K_eff=25/30 ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1321 ± 0.1108
+    anomaly_02            5          0.2909 ± 0.1736
+    anomaly_03            5          0.1975 ± 0.1098
+    anomaly_04            5          0.1380 ± 0.0858
+    anomaly_05            5          0.3252 ± 0.3747
+    >>> class class_04 mean pixel-AP: 0.2167
+
+--- scoring 745 test images  tta=hvflip ---
+      scored 200/745
+      scored 400/745
+      scored 600/745
+  class class_04 done in 0.8 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_05
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2640  train_anomaly=30  test=225
+    [16:59:39] extracting train_good patch features...
+    -> 2069760 patches × 768 dim  feature_hw=(28, 28)
+    [16:59:59] fitting PCA to 64 dims...
+      PCA cumulative explained variance (64 dims): 0.862
+      DPMM fit on 30000 subsampled patches (of 2069760)
+    [17:00:00] fitting DPMM (max_components=30, cov=diag, prior=0.01)...
+    DPMM fit done in 6.6s; effective components (w>1e-3): 27/30  (converged=True)
+
+--- local validation  tta=hvflip  K_eff=27/30 ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1699 ± 0.3398
+    anomaly_02            5          0.2689 ± 0.1576
+    anomaly_03            5          0.1760 ± 0.1470
+    anomaly_04            5          0.3204 ± 0.2701
+    anomaly_05            5          0.3323 ± 0.2448
+    anomaly_06            5          0.1110 ± 0.1893
+    >>> class class_05 mean pixel-AP: 0.2298
+
+--- scoring 225 test images  tta=hvflip ---
+      scored 200/225
+  class class_05 done in 0.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_06
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2335  train_anomaly=35  test=1010
+    [17:00:13] extracting train_good patch features...
+    -> 1830640 patches × 768 dim  feature_hw=(28, 28)
+    [17:00:31] fitting PCA to 64 dims...
+      PCA cumulative explained variance (64 dims): 0.839
+      DPMM fit on 30000 subsampled patches (of 1830640)
+    [17:00:32] fitting DPMM (max_components=30, cov=diag, prior=0.01)...
+    DPMM fit done in 9.3s; effective components (w>1e-3): 25/30  (converged=False)
+
+--- local validation  tta=hvflip  K_eff=25/30 ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.8586 ± 0.0364
+    anomaly_02            5          0.2035 ± 0.1401
+    anomaly_03            5          0.1963 ± 0.1987
+    anomaly_04            5          0.5107 ± 0.2128
+    anomaly_05            5          0.5951 ± 0.3045
+    anomaly_06            5          0.3659 ± 0.1966
+    anomaly_07            5          0.8890 ± 0.0748
+    >>> class class_06 mean pixel-AP: 0.5170
+
+--- scoring 1010 test images  tta=hvflip ---
+      scored 200/1010
+      scored 400/1010
+      scored 600/1010
+      scored 800/1010
+      scored 1000/1010
+  class class_06 done in 0.9 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_07
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2145  train_anomaly=35  test=915
+    [17:01:05] extracting train_good patch features...
+    -> 1681680 patches × 768 dim  feature_hw=(28, 28)
+    [17:01:21] fitting PCA to 64 dims...
+      PCA cumulative explained variance (64 dims): 0.834
+      DPMM fit on 30000 subsampled patches (of 1681680)
+    [17:01:22] fitting DPMM (max_components=30, cov=diag, prior=0.01)...
+    DPMM fit done in 7.5s; effective components (w>1e-3): 21/30  (converged=True)
+
+--- local validation  tta=hvflip  K_eff=21/30 ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.7053 ± 0.3468
+    anomaly_02            5          0.2306 ± 0.1869
+    anomaly_03            5          0.5666 ± 0.0947
+    anomaly_04            5          0.1297 ± 0.0696
+    anomaly_05            5          0.4049 ± 0.1393
+    anomaly_06            5          0.0963 ± 0.0617
+    anomaly_07            5          0.3426 ± 0.1174
+    >>> class class_07 mean pixel-AP: 0.3537
+
+--- scoring 915 test images  tta=hvflip ---
+      scored 200/915
+      scored 400/915
+      scored 600/915
+      scored 800/915
+  class class_07 done in 0.8 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_08
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2045  train_anomaly=35  test=960
+    [17:01:51] extracting train_good patch features...
+    -> 1603280 patches × 768 dim  feature_hw=(28, 28)
+    [17:02:06] fitting PCA to 64 dims...
+      PCA cumulative explained variance (64 dims): 0.874
+      DPMM fit on 30000 subsampled patches (of 1603280)
+    [17:02:07] fitting DPMM (max_components=30, cov=diag, prior=0.01)...
+    DPMM fit done in 6.2s; effective components (w>1e-3): 30/30  (converged=False)
+
+--- local validation  tta=hvflip  K_eff=30/30 ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.8810 ± 0.0636
+    anomaly_02            5          0.5220 ± 0.1997
+    anomaly_03            5          0.8355 ± 0.0520
+    anomaly_04            5          0.0483 ± 0.0965
+    anomaly_05            5          0.1131 ± 0.2262
+    anomaly_06            5          0.6097 ± 0.0418
+    anomaly_07            5          0.1769 ± 0.3538
+    >>> class class_08 mean pixel-AP: 0.4552
+
+--- scoring 960 test images  tta=hvflip ---
+      scored 200/960
+      scored 400/960
+      scored 600/960
+      scored 800/960
+  class class_08 done in 0.8 min
+[local_preds_saver] saved 235 predictions (392x392, ~10.02% positive pixels)
+[local_preds_saver]   score range: [-144.5, -20.93]  (stored as-is, no clipping)
+[local_preds_saver]   wrote -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-165643_dpmm_dnv2b14r_b9_in392_pca64_K30_diag_p0.01_tta-hvflip_dpmm-diag64-dnv2reg_252889/local_predictions.npz
+
+==============================================================================
+  LOCAL VALIDATION SUMMARY
+==============================================================================
+  class          pixel-AP    K_eff   time (min)
+  class_01         0.2640       29          0.6
+  class_02         0.3574       30          0.6
+  class_03         0.1473       25          0.8
+  class_04         0.2167       25          0.8
+  class_05         0.2298       27          0.6
+  class_06         0.5170       25          0.9
+  class_07         0.3537       21          0.8
+  class_08         0.4552       30          0.8
+  OVERALL          0.3176
+  saved per-(class, anomaly_type) AP -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-165643_dpmm_dnv2b14r_b9_in392_pca64_K30_diag_p0.01_tta-hvflip_dpmm-diag64-dnv2reg_252889/local_eval.csv
+
+==============================================================================
+  SUBMISSION
+==============================================================================
+    saved 5910 test predictions (224x224, range [-148.8, -16.5]) -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-165643_dpmm_dnv2b14r_b9_in392_pca64_K30_diag_p0.01_tta-hvflip_dpmm-diag64-dnv2reg_252889/test_predictions.npz
+
+--- calibrating scores and writing submission.csv ---
+    global score calibration  lo=-124.2491  hi=-67.9897
+    wrote 5910 rows -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-165643_dpmm_dnv2b14r_b9_in392_pca64_K30_diag_p0.01_tta-hvflip_dpmm-diag64-dnv2reg_252889/submission.csv
+    zipped         -> /work/u10813429/anomaly-detection/baseline_out/runs/20260521-165643_dpmm_dnv2b14r_b9_in392_pca64_K30_diag_p0.01_tta-hvflip_dpmm-diag64-dnv2reg_252889/submission.zip
+
+  Upload: /work/u10813429/anomaly-detection/baseline_out/runs/20260521-165643_dpmm_dnv2b14r_b9_in392_pca64_K30_diag_p0.01_tta-hvflip_dpmm-diag64-dnv2reg_252889/submission.zip
+
+  ablation row appended -> /work/u10813429/anomaly-detection/baseline_out/ablation_master.csv
+
+██████████████████████████████████████████████████████████████████████████████
+  DONE — run_id=20260521-165643_dpmm_dnv2b14r_b9_in392_pca64_K30_diag_p0.01_tta-hvflip_dpmm-diag64-dnv2reg_252889
+██████████████████████████████████████████████████████████████████████████████

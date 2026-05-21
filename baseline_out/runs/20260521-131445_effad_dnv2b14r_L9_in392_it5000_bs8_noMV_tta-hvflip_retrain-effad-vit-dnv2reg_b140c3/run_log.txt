@@ -1,0 +1,296 @@
+
+██████████████████████████████████████████████████████████████████████████████
+  EFFICIENTAD v2 — RUN 20260521-131445_effad_dnv2b14r_L9_in392_it5000_bs8_noMV_tta-hvflip_retrain-effad-vit-dnv2reg_b140c3
+██████████████████████████████████████████████████████████████████████████████
+  teacher_backbone : dinov2_vitb14_reg
+  teacher_layer    : 9
+  input_size       : 392
+  total_iters      : 5000
+  batch_size       : 8
+  lr / wd          : 0.0001 / 1e-05
+  hard_mining_pct  : 0.1
+  multiview        : none  alpha=0.5
+  device           : cuda
+  teacher built: out_channels=768, target_stride=4
+  running on 8 class(es): class_01, class_02, class_03, class_04, class_05, class_06, class_07, class_08
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_01
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2600  train_anomaly=25  test=465
+    [auto-epoch] total_iters=5000 / 325 → 16 epochs
+    [13:14:55] training: 16 epochs × 325 iters (5200 total)  bs=8  amp=True  hard_mining_pct=0.1  teacher_channels=768
+      epoch   2/16  loss=3.2667  L_st=1.5613  L_ae=1.6643  L_stae=0.0411  lr=9.62e-05  elapsed=37.6s
+      epoch   4/16  loss=2.5509  L_st=1.3087  L_ae=1.1808  L_stae=0.0614  lr=8.54e-05  elapsed=71.5s
+      epoch   6/16  loss=2.2439  L_st=1.2536  L_ae=0.9105  L_stae=0.0798  lr=6.91e-05  elapsed=105.3s
+      epoch   8/16  loss=2.0825  L_st=1.2225  L_ae=0.7650  L_stae=0.0950  lr=5.00e-05  elapsed=139.1s
+      epoch  10/16  loss=2.0001  L_st=1.2053  L_ae=0.6881  L_stae=0.1067  lr=3.09e-05  elapsed=173.0s
+      epoch  12/16  loss=1.9554  L_st=1.1931  L_ae=0.6490  L_stae=0.1133  lr=1.46e-05  elapsed=206.8s
+      epoch  14/16  loss=1.9359  L_st=1.1871  L_ae=0.6325  L_stae=0.1163  lr=3.81e-06  elapsed=240.5s
+      epoch  16/16  loss=1.9294  L_st=1.1842  L_ae=0.6285  L_stae=0.1167  lr=0.00e+00  elapsed=274.2s
+    [13:19:29] training done (274.2s)
+    [13:19:30] computing norm stats ...
+
+--- local validation multiview=none tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1487 ± 0.1015
+    anomaly_02            5          0.2738 ± 0.0480
+    anomaly_03            5          0.0202 ± 0.0169
+    anomaly_04            5          0.0564 ± 0.0498
+    anomaly_05            5          0.1562 ± 0.3125
+    >>> class class_01 mean pixel-AP: 0.1311
+
+--- scoring 465 test images multiview=none tta=hvflip ---
+  class class_01 done in 4.9 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_02
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2135  train_anomaly=30  test=800
+    [auto-epoch] total_iters=5000 / 266 → 19 epochs
+    [13:19:51] training: 19 epochs × 266 iters (5054 total)  bs=8  amp=True  hard_mining_pct=0.1  teacher_channels=768
+      epoch   2/19  loss=3.4851  L_st=1.6893  L_ae=1.7575  L_stae=0.0382  lr=9.73e-05  elapsed=27.8s
+      epoch   4/19  loss=2.7294  L_st=1.3317  L_ae=1.3521  L_stae=0.0456  lr=8.95e-05  elapsed=55.4s
+      epoch   6/19  loss=2.4066  L_st=1.2357  L_ae=1.1131  L_stae=0.0578  lr=7.73e-05  elapsed=83.1s
+      epoch   8/19  loss=2.2260  L_st=1.1988  L_ae=0.9574  L_stae=0.0698  lr=6.23e-05  elapsed=110.8s
+      epoch  10/19  loss=2.1164  L_st=1.1794  L_ae=0.8568  L_stae=0.0802  lr=4.59e-05  elapsed=138.5s
+      epoch  12/19  loss=2.0501  L_st=1.1673  L_ae=0.7947  L_stae=0.0880  lr=2.99e-05  elapsed=166.4s
+      epoch  14/19  loss=2.0111  L_st=1.1593  L_ae=0.7586  L_stae=0.0932  lr=1.61e-05  elapsed=194.2s
+      epoch  16/19  loss=1.9914  L_st=1.1550  L_ae=0.7403  L_stae=0.0960  lr=6.03e-06  elapsed=221.9s
+      epoch  18/19  loss=1.9836  L_st=1.1525  L_ae=0.7341  L_stae=0.0970  lr=6.82e-07  elapsed=249.7s
+      epoch  19/19  loss=1.9825  L_st=1.1519  L_ae=0.7336  L_stae=0.0970  lr=0.00e+00  elapsed=263.6s
+    [13:24:15] training done (263.6s)
+    [13:24:15] computing norm stats ...
+
+--- local validation multiview=none tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.4829 ± 0.1580
+    anomaly_02            5          0.1370 ± 0.0797
+    anomaly_03            5          0.2619 ± 0.1517
+    anomaly_04            5          0.0776 ± 0.0040
+    anomaly_05            5          0.0063 ± 0.0126
+    anomaly_06            5          0.0525 ± 0.1049
+    >>> class class_02 mean pixel-AP: 0.1697
+
+--- scoring 800 test images multiview=none tta=hvflip ---
+  class class_02 done in 4.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_03
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2520  train_anomaly=20  test=790
+    [auto-epoch] total_iters=5000 / 315 → 16 epochs
+    [13:24:28] training: 16 epochs × 315 iters (5040 total)  bs=8  amp=True  hard_mining_pct=0.1  teacher_channels=768
+      epoch   2/16  loss=3.3590  L_st=1.6554  L_ae=1.6664  L_stae=0.0373  lr=9.62e-05  elapsed=33.0s
+      epoch   4/16  loss=2.6742  L_st=1.3779  L_ae=1.2400  L_stae=0.0562  lr=8.54e-05  elapsed=65.7s
+      epoch   6/16  loss=2.3797  L_st=1.3124  L_ae=0.9927  L_stae=0.0746  lr=6.91e-05  elapsed=98.5s
+      epoch   8/16  loss=2.2184  L_st=1.2789  L_ae=0.8513  L_stae=0.0882  lr=5.00e-05  elapsed=131.5s
+      epoch  10/16  loss=2.1302  L_st=1.2588  L_ae=0.7739  L_stae=0.0975  lr=3.09e-05  elapsed=164.4s
+      epoch  12/16  loss=2.0827  L_st=1.2464  L_ae=0.7336  L_stae=0.1027  lr=1.46e-05  elapsed=197.4s
+      epoch  14/16  loss=2.0600  L_st=1.2391  L_ae=0.7162  L_stae=0.1047  lr=3.81e-06  elapsed=230.3s
+      epoch  16/16  loss=2.0546  L_st=1.2372  L_ae=0.7123  L_stae=0.1051  lr=0.00e+00  elapsed=263.2s
+    [13:28:51] training done (263.2s)
+    [13:28:51] computing norm stats ...
+
+--- local validation multiview=none tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.1714 ± 0.0864
+    anomaly_02            5          0.0197 ± 0.0145
+    anomaly_03            5          0.0130 ± 0.0172
+    anomaly_04            5          0.0474 ± 0.0948
+    >>> class class_03 mean pixel-AP: 0.0629
+
+--- scoring 790 test images multiview=none tta=hvflip ---
+  class class_03 done in 4.6 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_04
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2585  train_anomaly=25  test=745
+    [auto-epoch] total_iters=5000 / 323 → 16 epochs
+    [13:29:04] training: 16 epochs × 323 iters (5168 total)  bs=8  amp=True  hard_mining_pct=0.1  teacher_channels=768
+      epoch   2/16  loss=3.4749  L_st=1.7265  L_ae=1.7024  L_stae=0.0460  lr=9.62e-05  elapsed=33.9s
+      epoch   4/16  loss=2.7547  L_st=1.4153  L_ae=1.2855  L_stae=0.0539  lr=8.54e-05  elapsed=67.6s
+      epoch   6/16  loss=2.4485  L_st=1.3415  L_ae=1.0428  L_stae=0.0642  lr=6.91e-05  elapsed=101.4s
+      epoch   8/16  loss=2.2876  L_st=1.3085  L_ae=0.9029  L_stae=0.0762  lr=5.00e-05  elapsed=135.1s
+      epoch  10/16  loss=2.1993  L_st=1.2887  L_ae=0.8251  L_stae=0.0855  lr=3.09e-05  elapsed=168.8s
+      epoch  12/16  loss=2.1532  L_st=1.2770  L_ae=0.7850  L_stae=0.0913  lr=1.46e-05  elapsed=202.5s
+      epoch  14/16  loss=2.1316  L_st=1.2704  L_ae=0.7675  L_stae=0.0937  lr=3.81e-06  elapsed=236.3s
+      epoch  16/16  loss=2.1255  L_st=1.2679  L_ae=0.7634  L_stae=0.0942  lr=0.00e+00  elapsed=270.0s
+    [13:33:34] training done (270.0s)
+    [13:33:34] computing norm stats ...
+
+--- local validation multiview=none tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.0293 ± 0.0329
+    anomaly_02            5          0.1560 ± 0.0821
+    anomaly_03            5          0.1694 ± 0.0892
+    anomaly_04            5          0.0486 ± 0.0314
+    anomaly_05            5          0.2207 ± 0.1845
+    >>> class class_04 mean pixel-AP: 0.1248
+
+--- scoring 745 test images multiview=none tta=hvflip ---
+  class class_04 done in 4.7 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_05
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2640  train_anomaly=30  test=225
+    [auto-epoch] total_iters=5000 / 330 → 16 epochs
+    [13:33:46] training: 16 epochs × 330 iters (5280 total)  bs=8  amp=True  hard_mining_pct=0.1  teacher_channels=768
+      epoch   2/16  loss=3.3818  L_st=1.6443  L_ae=1.7000  L_stae=0.0374  lr=9.62e-05  elapsed=34.6s
+      epoch   4/16  loss=2.6693  L_st=1.3672  L_ae=1.2466  L_stae=0.0554  lr=8.54e-05  elapsed=69.1s
+      epoch   6/16  loss=2.3782  L_st=1.3084  L_ae=0.9972  L_stae=0.0725  lr=6.91e-05  elapsed=103.5s
+      epoch   8/16  loss=2.2191  L_st=1.2780  L_ae=0.8541  L_stae=0.0869  lr=5.00e-05  elapsed=137.9s
+      epoch  10/16  loss=2.1304  L_st=1.2596  L_ae=0.7730  L_stae=0.0978  lr=3.09e-05  elapsed=172.4s
+      epoch  12/16  loss=2.0826  L_st=1.2479  L_ae=0.7307  L_stae=0.1040  lr=1.46e-05  elapsed=206.8s
+      epoch  14/16  loss=2.0610  L_st=1.2418  L_ae=0.7125  L_stae=0.1066  lr=3.81e-06  elapsed=241.2s
+      epoch  16/16  loss=2.0537  L_st=1.2386  L_ae=0.7081  L_stae=0.1070  lr=0.00e+00  elapsed=275.7s
+    [13:38:22] training done (275.7s)
+    [13:38:22] computing norm stats ...
+
+--- local validation multiview=none tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.0270 ± 0.0541
+    anomaly_02            5          0.0786 ± 0.0430
+    anomaly_03            5          0.0752 ± 0.0641
+    anomaly_04            5          0.1562 ± 0.1541
+    anomaly_05            5          0.0348 ± 0.0261
+    anomaly_06            5          0.0113 ± 0.0200
+    >>> class class_05 mean pixel-AP: 0.0638
+
+--- scoring 225 test images multiview=none tta=hvflip ---
+  class class_05 done in 4.7 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_06
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2335  train_anomaly=35  test=1010
+    [auto-epoch] total_iters=5000 / 291 → 18 epochs
+    [13:38:29] training: 18 epochs × 291 iters (5238 total)  bs=8  amp=True  hard_mining_pct=0.1  teacher_channels=768
+      epoch   2/18  loss=3.7277  L_st=1.8195  L_ae=1.8820  L_stae=0.0262  lr=9.70e-05  elapsed=30.9s
+      epoch   4/18  loss=2.9818  L_st=1.4934  L_ae=1.4543  L_stae=0.0341  lr=8.83e-05  elapsed=61.4s
+      epoch   6/18  loss=2.6828  L_st=1.4374  L_ae=1.1985  L_stae=0.0468  lr=7.50e-05  elapsed=91.8s
+      epoch   8/18  loss=2.5118  L_st=1.4090  L_ae=1.0421  L_stae=0.0607  lr=5.87e-05  elapsed=122.2s
+      epoch  10/18  loss=2.4100  L_st=1.3886  L_ae=0.9483  L_stae=0.0731  lr=4.13e-05  elapsed=152.7s
+      epoch  12/18  loss=2.3503  L_st=1.3744  L_ae=0.8942  L_stae=0.0817  lr=2.50e-05  elapsed=183.1s
+      epoch  14/18  loss=2.3171  L_st=1.3648  L_ae=0.8653  L_stae=0.0869  lr=1.17e-05  elapsed=213.4s
+      epoch  16/18  loss=2.3023  L_st=1.3602  L_ae=0.8528  L_stae=0.0893  lr=3.02e-06  elapsed=243.6s
+      epoch  18/18  loss=2.2972  L_st=1.3578  L_ae=0.8497  L_stae=0.0897  lr=0.00e+00  elapsed=274.0s
+    [13:43:03] training done (274.0s)
+    [13:43:03] computing norm stats ...
+
+--- local validation multiview=none tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.4859 ± 0.0494
+    anomaly_02            5          0.0338 ± 0.0197
+    anomaly_03            5          0.1719 ± 0.1798
+    anomaly_04            5          0.2296 ± 0.1463
+    anomaly_05            5          0.3124 ± 0.1672
+    anomaly_06            5          0.1567 ± 0.0874
+    anomaly_07            5          0.4545 ± 0.0552
+    >>> class class_06 mean pixel-AP: 0.2636
+
+--- scoring 1010 test images multiview=none tta=hvflip ---
+  class class_06 done in 4.8 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_07
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2145  train_anomaly=35  test=915
+    [auto-epoch] total_iters=5000 / 268 → 19 epochs
+    [13:43:19] training: 19 epochs × 268 iters (5092 total)  bs=8  amp=True  hard_mining_pct=0.1  teacher_channels=768
+      epoch   2/19  loss=3.7379  L_st=1.8519  L_ae=1.8587  L_stae=0.0273  lr=9.73e-05  elapsed=28.3s
+      epoch   4/19  loss=3.0367  L_st=1.5239  L_ae=1.4797  L_stae=0.0331  lr=8.95e-05  elapsed=56.1s
+      epoch   6/19  loss=2.7575  L_st=1.4657  L_ae=1.2470  L_stae=0.0448  lr=7.73e-05  elapsed=84.1s
+      epoch   8/19  loss=2.5977  L_st=1.4394  L_ae=1.1006  L_stae=0.0577  lr=6.23e-05  elapsed=112.0s
+      epoch  10/19  loss=2.5008  L_st=1.4217  L_ae=1.0097  L_stae=0.0694  lr=4.59e-05  elapsed=139.8s
+      epoch  12/19  loss=2.4431  L_st=1.4099  L_ae=0.9545  L_stae=0.0786  lr=2.99e-05  elapsed=167.6s
+      epoch  14/19  loss=2.4087  L_st=1.4014  L_ae=0.9229  L_stae=0.0844  lr=1.61e-05  elapsed=195.5s
+      epoch  16/19  loss=2.3915  L_st=1.3966  L_ae=0.9075  L_stae=0.0875  lr=6.03e-06  elapsed=223.4s
+      epoch  18/19  loss=2.3848  L_st=1.3945  L_ae=0.9019  L_stae=0.0885  lr=6.82e-07  elapsed=251.3s
+      epoch  19/19  loss=2.3841  L_st=1.3941  L_ae=0.9015  L_stae=0.0885  lr=0.00e+00  elapsed=265.2s
+    [13:47:44] training done (265.2s)
+    [13:47:44] computing norm stats ...
+
+--- local validation multiview=none tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.4868 ± 0.2438
+    anomaly_02            5          0.1384 ± 0.1795
+    anomaly_03            5          0.2361 ± 0.0496
+    anomaly_04            5          0.0393 ± 0.0199
+    anomaly_05            5          0.2647 ± 0.1525
+    anomaly_06            5          0.0992 ± 0.0661
+    anomaly_07            5          0.1085 ± 0.0557
+    >>> class class_07 mean pixel-AP: 0.1962
+
+--- scoring 915 test images multiview=none tta=hvflip ---
+  class class_07 done in 4.7 min
+
+──────────────────────────────────────────────────────────────────────────────
+  CLASS class_08
+──────────────────────────────────────────────────────────────────────────────
+  train_good=2045  train_anomaly=35  test=960
+    [auto-epoch] total_iters=5000 / 255 → 20 epochs
+    [13:47:59] training: 20 epochs × 255 iters (5100 total)  bs=8  amp=True  hard_mining_pct=0.1  teacher_channels=768
+      epoch   2/20  loss=3.5040  L_st=1.7115  L_ae=1.7493  L_stae=0.0432  lr=9.76e-05  elapsed=26.9s
+      epoch   4/20  loss=2.7303  L_st=1.3471  L_ae=1.3298  L_stae=0.0535  lr=9.05e-05  elapsed=53.5s
+      epoch   6/20  loss=2.3918  L_st=1.2450  L_ae=1.0804  L_stae=0.0664  lr=7.94e-05  elapsed=80.0s
+      epoch   8/20  loss=2.1910  L_st=1.1978  L_ae=0.9157  L_stae=0.0775  lr=6.55e-05  elapsed=106.6s
+      epoch  10/20  loss=2.0639  L_st=1.1698  L_ae=0.8069  L_stae=0.0872  lr=5.00e-05  elapsed=133.1s
+      epoch  12/20  loss=1.9800  L_st=1.1492  L_ae=0.7364  L_stae=0.0944  lr=3.45e-05  elapsed=159.7s
+      epoch  14/20  loss=1.9277  L_st=1.1353  L_ae=0.6932  L_stae=0.0992  lr=2.06e-05  elapsed=186.3s
+      epoch  16/20  loss=1.8967  L_st=1.1254  L_ae=0.6696  L_stae=0.1017  lr=9.55e-06  elapsed=213.0s
+      epoch  18/20  loss=1.8824  L_st=1.1203  L_ae=0.6594  L_stae=0.1027  lr=2.45e-06  elapsed=239.5s
+      epoch  20/20  loss=1.8788  L_st=1.1190  L_ae=0.6570  L_stae=0.1028  lr=0.00e+00  elapsed=266.0s
+    [13:52:25] training done (266.0s)
+    [13:52:25] computing norm stats ...
+
+--- local validation multiview=none tta=hvflip ---
+    anomaly_type    n_views      pixel-AP (mean ± std)
+    anomaly_01            5          0.6568 ± 0.0310
+    anomaly_02            5          0.1965 ± 0.1013
+    anomaly_03            5          0.5546 ± 0.0349
+    anomaly_04            5          0.0244 ± 0.0489
+    anomaly_05            5          0.0932 ± 0.1864
+    anomaly_06            5          0.6470 ± 0.0718
+    anomaly_07            5          0.0518 ± 0.1037
+    >>> class class_08 mean pixel-AP: 0.3178
+
+--- scoring 960 test images multiview=none tta=hvflip ---
+  class class_08 done in 4.7 min
+[local_preds_saver] saved 235 predictions (392x392, ~10.02% positive pixels)
+[local_preds_saver]   score range: [-1.772, 9.999]  (stored as-is, no clipping)
+[local_preds_saver]   wrote -> /workspace/anomaly-detection/baseline_out/runs/20260521-131445_effad_dnv2b14r_L9_in392_it5000_bs8_noMV_tta-hvflip_retrain-effad-vit-dnv2reg_b140c3/local_predictions.npz
+
+==============================================================================
+  LOCAL VALIDATION SUMMARY
+==============================================================================
+  class_01            0.1311          4.9
+  class_02            0.1697          4.6
+  class_03            0.0629          4.6
+  class_04            0.1248          4.7
+  class_05            0.0638          4.7
+  class_06            0.2636          4.8
+  class_07            0.1962          4.7
+  class_08            0.3178          4.7
+  OVERALL             0.1662
+  saved per-(class, anomaly_type) AP -> /workspace/anomaly-detection/baseline_out/runs/20260521-131445_effad_dnv2b14r_L9_in392_it5000_bs8_noMV_tta-hvflip_retrain-effad-vit-dnv2reg_b140c3/local_eval.csv
+
+==============================================================================
+  SUBMISSION
+==============================================================================
+    saved 5910 test predictions (224x224, range [-1.885, 39.28]) -> /workspace/anomaly-detection/baseline_out/runs/20260521-131445_effad_dnv2b14r_L9_in392_it5000_bs8_noMV_tta-hvflip_retrain-effad-vit-dnv2reg_b140c3/test_predictions.npz
+
+--- calibrating scores and writing submission.csv ---
+    global score calibration  lo=-1.1433  hi=4.0064
+    wrote 5910 rows -> /workspace/anomaly-detection/baseline_out/runs/20260521-131445_effad_dnv2b14r_L9_in392_it5000_bs8_noMV_tta-hvflip_retrain-effad-vit-dnv2reg_b140c3/submission.csv
+    zipped         -> /workspace/anomaly-detection/baseline_out/runs/20260521-131445_effad_dnv2b14r_L9_in392_it5000_bs8_noMV_tta-hvflip_retrain-effad-vit-dnv2reg_b140c3/submission.zip
+
+  Upload: /workspace/anomaly-detection/baseline_out/runs/20260521-131445_effad_dnv2b14r_L9_in392_it5000_bs8_noMV_tta-hvflip_retrain-effad-vit-dnv2reg_b140c3/submission.zip
+
+  ablation row appended -> /workspace/anomaly-detection/baseline_out/ablation_master.csv
+
+██████████████████████████████████████████████████████████████████████████████
+  DONE — run_id=20260521-131445_effad_dnv2b14r_L9_in392_it5000_bs8_noMV_tta-hvflip_retrain-effad-vit-dnv2reg_b140c3
+██████████████████████████████████████████████████████████████████████████████

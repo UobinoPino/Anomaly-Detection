@@ -45,24 +45,44 @@ COMMON_ARGS=(
     --seed 0
     --neg-per-pos 30
     --cache-dir "$CACHE"
+    --calibrate none
 )
 
 TS=$(date +%Y%m%d-%H%M%S)
 
+   echo "================ NO TUNE: KNOWN-GOOD PARAMS ================"
+    OUT=$RUNS_DIR/${TS}_stacker_xgb_v8_known
+    uv run python "$STACKER" \
+        "${COMMON_ARGS[@]}" \
+        --tune-mode none \
+        --n-estimators 400 \
+        --max-depth 5 \
+        --learning-rate 0.04612 \
+        --subsample 0.718 \
+        --colsample-bytree 0.569 \
+        --reg-alpha 0.245 \
+        --reg-lambda 0.0563 \
+        --min-child-weight 72.3 \
+        --gamma 1.93 \
+        --out "$OUT/submission.csv" \
+        --run-tag "stacker-xgb-v8-known-params"
 # ─────────────────────────────────────────────────────────────────────────────
 # RUN V6-A — smoke test: v6 defaults (uint16 storage, per-class lifecycle,
 # drop-decoded during fusion).  No Optuna, no calibration.
 # First run: warms the cache.  Subsequent runs skip decode + rank-norm.
 # ─────────────────────────────────────────────────────────────────────────────
-echo ".................................."
-OUT_C=$RUNS_DIR/${TS}_stacker_xgb_v8
-uv run python "$ROOT/xgboost_stacker_v8.py" \
-    "${COMMON_ARGS[@]}" \
-    --tune-mode global  \
-    --tune-cv kfold-stratified --tune-cv-k 5 \
-    --tune-timeout-min 10 \
-    --calibrate isotonic \
-    --final-rank-norm global \
-    --gpu auto \
-    --out "$OUT_C/submission.csv" \
-    --run-tag "stacker-xgb-v8-lb-aligned"
+#echo ".................................."
+#OUT_C=$RUNS_DIR/${TS}_stacker_xgb_v8
+#uv run python "$ROOT/xgboost_stacker_v8.py" \
+#    "${COMMON_ARGS[@]}" \
+#    --tune-mode global  \
+#    --tune-cv kfold-stratified --tune-cv-k 3 \
+#    --n-trials 40 \
+#    --tune-timeout-min 10 \
+#    --calibrate isotonic \
+#    --final-rank-norm global \
+#    --gpu auto \
+#    --lean-training-data off \
+#    --xgb-n-jobs 16 \
+#    --out "$OUT_C/submission.csv" \
+#    --run-tag "stacker-xgb-v8-lb-aligned"
