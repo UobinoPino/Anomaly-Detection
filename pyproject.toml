@@ -1,0 +1,38 @@
+[project]
+name = "anomaly-detection"
+version = "0.1.0"
+description = "Spacepresso anomaly detection challenge"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # core scientific
+    "numpy>=2.0",
+    "pillow>=10.0",
+    "scipy>=1.13",
+    "matplotlib>=3.8",
+    "pandas>=2.2",
+    "tqdm>=4.66",
+    # image / CV
+    "opencv-python>=4.10",
+    "scikit-image>=0.24",
+    "scikit-learn>=1.5",
+    "albumentations>=1.4",
+    # deep learning
+    "torch>=2.5",
+    "torchvision>=0.20",
+    "timm>=1.0.11",        # pretrained backbones (PatchCore/EfficientAD)
+    "einops>=0.8",
+    # nice-to-have
+    "jupyterlab>=4.2",
+    "ipywidgets>=8.1",
+    "xgboost>=3.2.0",
+    "optuna>=4.8.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126" }]
+torchvision = [{ index = "pytorch-cu126" }]
