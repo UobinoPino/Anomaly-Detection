@@ -104,6 +104,7 @@ via 2D Normalizing Flows" (Yu et al., 2021), adapted to Spacepresso.
   patchcore_baseline_v2.py and local_preds_saver.py in same directory.
 """
 from __future__ import annotations
+from test_preds_saver import save_test_predictions
 
 import argparse
 import csv
@@ -978,6 +979,7 @@ def main():
 
         if not cfg.skip_submission and all_test_results:
             hr("SUBMISSION", "=")
+            save_test_predictions(all_test_results, run_dir)
             write_submission(all_test_results, run_dir,
                               zip_it=cfg.zip_submission)
             print(f"\n  Upload: {run_dir / 'submission.zip'}")

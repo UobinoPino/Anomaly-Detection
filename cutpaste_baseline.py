@@ -1,43 +1,45 @@
-"""Spacepresso CutPaste — self-supervised pixel-level anomaly detection.
+"""CutPaste — v5 adds frozen DINOv2/v3 ViT backbone mode.
 
-# v4 changes (sibling-bank multiview, additive)
+# Why v5 (key design decision)
 
-v3 introduced PatchCore-style NN scoring as the default. v4 adds opt-in
-**sibling-bank multiview** inference on the PatchCore scorer, mirroring the
-implementation in efficientad_baseline.py and patchcore_baseline_v2.py.
+The v3/v4 CutPaste trains a ResNet end-to-end with SGD lr=0.03. Applying
+that recipe to a DINOv2/v3 ViT would catastrophically degrade the
+pretrained SSL features — DINO's training was done with momentum ~0.99,
+adaptive optimisers, and orders-of-magnitude smaller learning rates.
 
-  --multiview {none, sibling-bank}   (default: none)
-  --mv-alpha FLOAT                    (default: 0.5)
+v5 introduces a `--encoder-mode frozen` option (default for ViT backbones)
+in which:
 
-  When `--multiview sibling-bank` is on (and `--scorer patchcore`), test
-  samples are grouped by `sample_id` and all views are batched. For each
-  view V_i:
-    1. Standard CutPaste-NN score (1 - max cos sim to memory bank).
-    2. Sibling bank: patch features of the OTHER (V - 1) views.
-    3. View-inconsistency map: 1 - max cos sim to sibling bank.
-    4. Min-max normalise across the sample.
-    5. Boost: final = standard * ((1 - alpha) + alpha * mv_inc_norm)
+  * The DINOv2/v3 backbone is FROZEN.
+  * A small projection head (Conv2d 1×1 stack) is trained on top of
+    patch tokens.
+  * A classifier head sits on top of (global-avg-pool of projected
+    patch tokens) to do the 3-class CutPaste task (normal / cutpaste / scar).
+  * PatchCore-NN scoring uses the PROJECTED patch tokens — so the
+    learned task-adapted features are the bank.
 
-  alpha=0 makes multiview a no-op. alpha=1 fully replaces the standard
-  score with the view-inconsistency signal. 0.5 is a balanced default.
+For ResNet backbones the behaviour is unchanged (full end-to-end SGD
+training).
 
-  The multiview path only works with `--scorer patchcore`. Passing
-  `--multiview sibling-bank --scorer padim` aborts with a clear error
-  (PaDiM has no per-pixel features matching the sibling-bank shape).
+# What this gives the stacker
 
-# v3 (recap) — PaDiM → PatchCore-NN scoring by default
+A new track whose features are:
+  - Pretrained on web-scale SSL (DINOv2/v3): strong general descriptors.
+  - Adapted by a tiny projection head to discriminate CutPaste anomalies:
+    task-relevant.
+  - Independent error mode from plain PatchCore-on-DINOv2 (exp7) because
+    the projection is trained, not raw.
 
-v1/v2 used PaDiM (per-position Gaussian + Mahalanobis). Position-aligned
-PaDiM is multi-modal on multi-view data: variance blows up, Mahalanobis
-shrinks to ~0 everywhere, AP collapses to ~0.25. v3 defaults to PatchCore
-NN over the CutPaste-trained features. The PaDiM path is preserved
-behind `--scorer padim` for completeness.
+# Stacker contract — unchanged
 
-# v4 + stacker hook (unchanged)
+  $RUN/submission.csv, $RUN/local_predictions.npz with image_paths.
 
-Writes `local_predictions.npz` per run for downstream stacker training.
+# Dependencies
+
+  Same as v4, plus dinov3_loader.py in the same directory.
 """
 from __future__ import annotations
+from test_preds_saver import save_test_predictions
 
 import argparse
 import csv
@@ -61,44 +63,34 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-from torchvision.models import (
-    resnet18, ResNet18_Weights,
-    resnet50, ResNet50_Weights,
-)
+from torchvision.models import (resnet18, ResNet18_Weights,
+                                   resnet50, ResNet50_Weights)
 
-# PatchCore helpers — same patchify and coreset selection used by the
-# PatchCore baseline so the two methods are directly comparable.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from patchcore_baseline_v2 import patchify_and_combine, greedy_coreset
-
-# Stacker hook — must live in the same directory.
+from patchcore_baseline_v2 import (
+    patchify_and_combine, greedy_coreset,
+    ImageRecord, scan_dataset,
+    pixel_average_precision, gaussian_smooth,
+    calibrate_to_unit, float_matrix_to_q8rle,
+    maybe_resize_to_submission,
+    append_to_ablation_master,
+    IMAGENET_MEAN, IMAGENET_STD,
+    BACKBONE_SHORT, RESNET_BACKBONES, DINO_BACKBONES,
+)
 from local_preds_saver import LocalPredSaver
+from dinov3_loader import (load_dino_backbone, get_patch_tokens_at_layers,
+                              is_dino_backbone, DINOV3_CONVNEXT_SPECS)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Defaults
-# ─────────────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path("/work/u10813429/anomaly-detection")
 DEFAULT_DATA_ROOT  = PROJECT_ROOT / "data"
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "baseline_out"
 
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
-IMAGENET_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_STD  = (0.229, 0.224, 0.225)
 VIEW_RE = re.compile(r"^(?P<base>.+?)_view(?P<v>\d+)\.[A-Za-z]+$")
-
-LAYER_DIMS = {
-    "resnet18": {1: 64,  2: 128, 3: 256,  4: 512},
-    "resnet50": {1: 256, 2: 512, 3: 1024, 4: 2048},
-}
-BACKBONE_SHORT = {"resnet18": "rn18", "resnet50": "rn50"}
-
 SUBMISSION_H = SUBMISSION_W = 224
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tee logger
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Tee logger ──────────────────────────────────────────────────────────────
 class Tee:
     def __init__(self, *streams): self.streams = streams
     def write(self, s):
@@ -111,11 +103,9 @@ class Tee:
 def tee_to(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     f = open(path, "w", encoding="utf-8")
-    old = sys.stdout
-    sys.stdout = Tee(old, f)
+    old = sys.stdout; sys.stdout = Tee(old, f)
     try: yield
-    finally:
-        sys.stdout = old; f.close()
+    finally: sys.stdout = old; f.close()
 
 
 def hr(t, c="="): print(f"\n{c * 78}\n  {t}\n{c * 78}")
@@ -123,153 +113,63 @@ def sub(t): print(f"\n--- {t} ---")
 def now_hms(): return time.strftime("%H:%M:%S")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Dataset scanning
-# ─────────────────────────────────────────────────────────────────────────────
-@dataclass
-class ImageRecord:
-    path: Path
-    cls: str
-    split: str
-    anomaly_type: str | None = None
-    sample_id: str | None = None
-    view: int | None = None
-    mask_path: Path | None = None
-
-
-def parse_view(filename: str) -> tuple[str, int | None]:
-    m = VIEW_RE.match(filename)
-    if m:
-        return m.group("base"), int(m.group("v"))
-    return Path(filename).stem, None
-
-
-def scan_dataset(data_root: Path) -> list[ImageRecord]:
-    out: list[ImageRecord] = []
-    if not data_root.exists():
-        print(f"  [FATAL] {data_root} not found"); return out
-    classes = sorted(d.name for d in data_root.iterdir()
-                     if d.is_dir() and d.name.startswith("class_"))
-    for cls in classes:
-        cdir = data_root / cls
-        gd = cdir / "train" / "good"
-        if gd.exists():
-            for p in sorted(gd.iterdir()):
-                if p.suffix.lower() in IMG_EXTS:
-                    sid, v = parse_view(p.name)
-                    out.append(ImageRecord(p, cls, "train_good",
-                                           sample_id=sid, view=v))
-        td = cdir / "train"
-        if td.exists():
-            for sd in sorted(td.iterdir()):
-                if (not sd.is_dir() or sd.name == "good"
-                        or not sd.name.startswith("anomaly_")):
-                    continue
-                a_type = sd.name
-                gtd = cdir / "ground_truth_train" / a_type
-                for p in sorted(sd.iterdir()):
-                    if p.suffix.lower() not in IMG_EXTS: continue
-                    sid, v = parse_view(p.name)
-                    mp = None
-                    if gtd.exists():
-                        cand = gtd / p.name
-                        if cand.exists():
-                            mp = cand
-                        else:
-                            for q in gtd.iterdir():
-                                if (q.stem == p.stem
-                                        and q.suffix.lower() in IMG_EXTS):
-                                    mp = q; break
-                    out.append(ImageRecord(p, cls, "train_anomaly",
-                                           anomaly_type=a_type,
-                                           sample_id=sid, view=v,
-                                           mask_path=mp))
-        ted = cdir / "test"
-        if ted.exists():
-            for p in sorted(ted.rglob("*")):
-                if p.is_file() and p.suffix.lower() in IMG_EXTS:
-                    sid, v = parse_view(p.name)
-                    out.append(ImageRecord(p, cls, "test",
-                                           sample_id=sid, view=v))
-    return out
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CutPaste augmentations (PIL.Image in, PIL.Image out)
-# ─────────────────────────────────────────────────────────────────────────────
-def _color_jitter(patch: Image.Image, strength: float) -> Image.Image:
-    if strength <= 0:
-        return patch
+# ─── CutPaste augs (PIL in, PIL out) — unchanged from v4 ─────────────────────
+def _color_jitter(patch, strength):
+    if strength <= 0: return patch
     cj = transforms.ColorJitter(brightness=strength, contrast=strength,
                                  saturation=strength, hue=min(strength, 0.5))
     return cj(patch)
 
 
-def apply_cutpaste(img: Image.Image,
-                    area_ratio=(0.02, 0.15), aspect_ratio=(0.3, 3.3),
-                    color_jitter=0.1, rng=None) -> Image.Image:
+def apply_cutpaste(img, area_ratio=(0.02, 0.15), aspect_ratio=(0.3, 3.3),
+                    color_jitter=0.1, rng=None):
     r = rng or random
-    W, H = img.size
-    total_area = W * H
-    patch_w, patch_h = 0, 0
+    W, H = img.size; total = W * H
+    pw = ph = 0
     for _ in range(10):
-        target_area = r.uniform(*area_ratio) * total_area
-        log_lo, log_hi = math.log(aspect_ratio[0]), math.log(aspect_ratio[1])
-        aspect = math.exp(r.uniform(log_lo, log_hi))
-        patch_w = max(1, int(round(math.sqrt(target_area * aspect))))
-        patch_h = max(1, int(round(math.sqrt(target_area / aspect))))
-        if patch_w < W and patch_h < H:
-            break
+        target_area = r.uniform(*area_ratio) * total
+        lo, hi = math.log(aspect_ratio[0]), math.log(aspect_ratio[1])
+        aspect = math.exp(r.uniform(lo, hi))
+        pw = max(1, int(round(math.sqrt(target_area * aspect))))
+        ph = max(1, int(round(math.sqrt(target_area / aspect))))
+        if pw < W and ph < H: break
     else:
         return img.copy()
-    src_x = r.randint(0, W - patch_w); src_y = r.randint(0, H - patch_h)
-    patch = img.crop((src_x, src_y, src_x + patch_w, src_y + patch_h))
-    patch = _color_jitter(patch, color_jitter)
-    tgt_x = r.randint(0, W - patch_w); tgt_y = r.randint(0, H - patch_h)
-    out = img.copy()
-    out.paste(patch, (tgt_x, tgt_y))
+    sx = r.randint(0, W - pw); sy = r.randint(0, H - ph)
+    patch = _color_jitter(img.crop((sx, sy, sx + pw, sy + ph)), color_jitter)
+    tx = r.randint(0, W - pw); ty = r.randint(0, H - ph)
+    out = img.copy(); out.paste(patch, (tx, ty))
     return out
 
 
-def apply_cutpaste_scar(img: Image.Image,
-                         width=(10, 25), height=(2, 16),
-                         rotation_deg=45.0, color_jitter=0.1,
-                         rng=None) -> Image.Image:
+def apply_cutpaste_scar(img, width=(10, 25), height=(2, 16),
+                         rotation_deg=45.0, color_jitter=0.1, rng=None):
     r = rng or random
     W, H = img.size
     pw = r.randint(*width); ph = r.randint(*height)
-    if pw >= W or ph >= H:
-        return img.copy()
-    src_x = r.randint(0, W - pw); src_y = r.randint(0, H - ph)
-    patch = img.crop((src_x, src_y, src_x + pw, src_y + ph))
-    patch = _color_jitter(patch, color_jitter)
+    if pw >= W or ph >= H: return img.copy()
+    sx = r.randint(0, W - pw); sy = r.randint(0, H - ph)
+    patch = _color_jitter(img.crop((sx, sy, sx + pw, sy + ph)), color_jitter)
     angle = r.uniform(-rotation_deg, rotation_deg)
-    if patch.mode != "RGBA":
-        patch = patch.convert("RGBA")
+    if patch.mode != "RGBA": patch = patch.convert("RGBA")
     patch = patch.rotate(angle, resample=Image.BILINEAR, expand=True)
     rw, rh = patch.size
-    if rw >= W or rh >= H:
-        return img.copy()
-    tgt_x = r.randint(0, W - rw); tgt_y = r.randint(0, H - rh)
+    if rw >= W or rh >= H: return img.copy()
+    tx = r.randint(0, W - rw); ty = r.randint(0, H - rh)
     out = img.copy().convert("RGB")
-    out.paste(patch, (tgt_x, tgt_y), mask=patch.split()[-1])
+    out.paste(patch, (tx, ty), mask=patch.split()[-1])
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Datasets
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Datasets ────────────────────────────────────────────────────────────────
 class CutPasteTrainDataset(Dataset):
     def __init__(self, records, input_size, area_ratio=(0.02, 0.15),
                  aspect_ratio=(0.3, 3.3), color_jitter=0.1,
                  scar_width=(10, 25), scar_height=(2, 16), scar_rot=45.0):
-        self.records = records
-        self.input_size = input_size
-        self.area_ratio = area_ratio
-        self.aspect_ratio = aspect_ratio
+        self.records = records; self.input_size = input_size
+        self.area_ratio = area_ratio; self.aspect_ratio = aspect_ratio
         self.color_jitter = color_jitter
-        self.scar_width = scar_width
-        self.scar_height = scar_height
+        self.scar_width = scar_width; self.scar_height = scar_height
         self.scar_rot = scar_rot
         self.resize = transforms.Resize((input_size, input_size))
         self.to_tensor = transforms.ToTensor()
@@ -282,8 +182,7 @@ class CutPasteTrainDataset(Dataset):
     def __getitem__(self, i):
         r = self.records[i]
         with Image.open(r.path) as im:
-            im = im.convert("RGB")
-            base = self.resize(im).copy()
+            im = im.convert("RGB"); base = self.resize(im).copy()
         cp = apply_cutpaste(base, area_ratio=self.area_ratio,
                               aspect_ratio=self.aspect_ratio,
                               color_jitter=self.color_jitter)
@@ -296,8 +195,7 @@ class CutPasteTrainDataset(Dataset):
 
 class InferenceDataset(Dataset):
     def __init__(self, records, input_size, load_masks):
-        self.records = records
-        self.input_size = input_size
+        self.records = records; self.input_size = input_size
         self.load_masks = load_masks
         self.tx = transforms.Compose([
             transforms.Resize((input_size, input_size)),
@@ -310,27 +208,24 @@ class InferenceDataset(Dataset):
     def __getitem__(self, i):
         r = self.records[i]
         with Image.open(r.path) as im:
-            im = im.convert("RGB")
-            x = self.tx(im)
+            x = self.tx(im.convert("RGB"))
         if self.load_masks and r.mask_path is not None:
             with Image.open(r.mask_path) as mm:
-                mm = mm.convert("L")
-                mm = mm.resize((self.input_size, self.input_size), Image.NEAREST)
+                mm = mm.convert("L").resize((self.input_size, self.input_size),
+                                              Image.NEAREST)
                 m = (np.asarray(mm) > 127).astype(np.float32)
         else:
             m = np.zeros((self.input_size, self.input_size), dtype=np.float32)
         return x, torch.from_numpy(m), i
 
 
-def worker_init_fn(worker_id):
+def worker_init_fn(_worker_id):
     base = torch.initial_seed() % 2 ** 32
     np.random.seed(base); random.seed(base)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Model
-# ─────────────────────────────────────────────────────────────────────────────
-class CutPasteNet(nn.Module):
+# ─── ResNet CutPasteNet — unchanged from v4 ──────────────────────────────────
+class CutPasteNetResNet(nn.Module):
     def __init__(self, backbone="resnet18", num_classes=3):
         super().__init__()
         if backbone == "resnet18":
@@ -350,6 +245,7 @@ class CutPasteNet(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(feat_dim, num_classes),
         )
+        self.kind = "resnet"
 
     def forward(self, x):
         return self.head(self.encoder(x))
@@ -369,9 +265,90 @@ class CutPasteNet(nn.Module):
         return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Training (unchanged from v2/v3)
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── ViT CutPasteNet — NEW in v5 ─────────────────────────────────────────────
+class CutPasteNetViT(nn.Module):
+    """Frozen DINOv2/v3 backbone + per-layer 1x1 projection head + CLS classifier.
+
+    The projection head is a stack of 1x1 Conv2d → BN → ReLU → 1x1 Conv2d
+    applied on each requested layer's patch tokens. Its output replaces
+    the raw backbone patch tokens in PatchCore-NN scoring.
+
+    Why per-layer rather than one shared projection: each DINOv2/v3 block
+    has its own activation statistics, so a per-layer linear projection
+    is the safest minimal adapter that doesn't disturb cross-layer
+    relative scaling.
+    """
+    def __init__(self, backbone_name: str, feature_layers: tuple[int, ...],
+                 num_classes: int = 3, proj_dim: int = 256):
+        super().__init__()
+        self.backbone_name = backbone_name
+        self.feature_layers = tuple(sorted(set(feature_layers)))
+        self.kind = "vit"
+
+        backbone, info = load_dino_backbone(backbone_name)
+        self.backbone = backbone
+        self.info = info
+        self.embed_dim = info.embed_dim
+        for p in self.backbone.parameters():
+            p.requires_grad_(False)
+        self.backbone.eval()
+
+        # Per-layer 1x1 projection head (Conv2d so it works directly on
+        # the (B, C, H, W) patch-token grids returned by the loader).
+        self.proj_dim = proj_dim
+        self.projections = nn.ModuleDict({
+            str(l): nn.Sequential(
+                nn.Conv2d(self.embed_dim, proj_dim, 1, bias=False),
+                nn.BatchNorm2d(proj_dim),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(proj_dim, proj_dim, 1),
+            ) for l in self.feature_layers
+        })
+
+        # Classifier head consumes mean-pooled projection of the LAST
+        # requested layer — keeps the head small and stable.
+        self.head = nn.Sequential(
+            nn.Linear(proj_dim, proj_dim),
+            nn.BatchNorm1d(proj_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(proj_dim, num_classes),
+        )
+
+    def forward(self, x):
+        """Returns the classifier logits."""
+        with torch.no_grad():
+            feats = get_patch_tokens_at_layers(self.backbone, self.info,
+                                                  x, self.feature_layers)
+        last_layer = self.feature_layers[-1]
+        z = self.projections[str(last_layer)](feats[last_layer])  # (B, P, h, w)
+        pooled = z.flatten(2).mean(dim=2)                          # (B, P)
+        return self.head(pooled)
+
+    def extract_features(self, x, layers=None):
+        """Returns {layer_idx: projected patch tokens (B, C, h, w)} for
+        the requested layers; defaults to self.feature_layers."""
+        layers = tuple(sorted(layers)) if layers else self.feature_layers
+        with torch.no_grad():
+            feats = get_patch_tokens_at_layers(self.backbone, self.info,
+                                                  x, layers)
+        out = {}
+        for l in layers:
+            out[l] = self.projections[str(l)](feats[l])
+        return out
+
+
+def build_cutpaste_net(cfg, num_classes=3):
+    if cfg.backbone in RESNET_BACKBONES:
+        return CutPasteNetResNet(backbone=cfg.backbone, num_classes=num_classes)
+    if is_dino_backbone(cfg.backbone):
+        return CutPasteNetViT(backbone_name=cfg.backbone,
+                                 feature_layers=cfg.feature_layers,
+                                 num_classes=num_classes,
+                                 proj_dim=cfg.vit_proj_dim)
+    raise SystemExit(f"[FATAL] unknown --backbone: {cfg.backbone}")
+
+
+# ─── Training ────────────────────────────────────────────────────────────────
 def train_cutpaste(model, records, cfg, device):
     ds = CutPasteTrainDataset(
         records, input_size=cfg.input_size,
@@ -387,30 +364,40 @@ def train_cutpaste(model, records, cfg, device):
                          persistent_workers=(cfg.num_workers > 0),
                          worker_init_fn=worker_init_fn, drop_last=False)
     iters_per_epoch = len(loader)
-    if cfg.total_iters is not None and cfg.total_iters > 0:
+    if cfg.total_iters and cfg.total_iters > 0:
         n_epochs = max(1, math.ceil(cfg.total_iters / max(iters_per_epoch, 1)))
-        print(f"    [auto-epoch] total_iters={cfg.total_iters} / "
-              f"{iters_per_epoch} iters/epoch = {n_epochs} epochs "
-              f"(--epochs={cfg.epochs} overridden)")
+        print(f"    [auto-epoch] total_iters={cfg.total_iters} -> {n_epochs} epochs")
     else:
         n_epochs = cfg.epochs
-    optim = torch.optim.SGD(model.parameters(), lr=cfg.lr,
-                              momentum=cfg.momentum,
-                              weight_decay=cfg.weight_decay)
+
+    # Trainable params depend on the encoder mode.
+    if model.kind == "vit":
+        trainable = list(model.projections.parameters()) + list(model.head.parameters())
+        print(f"    [{now_hms()}] ViT mode: backbone FROZEN, "
+              f"head + projection trainable ({sum(p.numel() for p in trainable)/1e6:.2f}M)")
+        # Use Adam for the small head: SGD lr=0.03 would be totally wrong here.
+        optim = torch.optim.AdamW(trainable, lr=cfg.lr_head,
+                                     weight_decay=cfg.weight_decay)
+    else:
+        trainable = list(model.parameters())
+        print(f"    [{now_hms()}] ResNet mode: full end-to-end SGD "
+              f"({sum(p.numel() for p in trainable)/1e6:.2f}M)")
+        optim = torch.optim.SGD(trainable, lr=cfg.lr,
+                                   momentum=cfg.momentum,
+                                   weight_decay=cfg.weight_decay)
+
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optim, T_max=max(iters_per_epoch * n_epochs, 1))
     criterion = nn.CrossEntropyLoss()
     use_amp = (device.type == "cuda" and cfg.amp)
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
-    print(f"    [{now_hms()}] training: {n_epochs} epochs, "
-          f"{iters_per_epoch} iters/epoch "
-          f"({iters_per_epoch * n_epochs} total), "
-          f"{len(records)} train_good, batch={cfg.batch_size} "
-          f"(effective {3 * cfg.batch_size}), amp={use_amp}")
     log_every = max(1, n_epochs // 8)
     t0 = time.time()
     for epoch in range(n_epochs):
         model.train()
+        # Frozen backbone stays in eval mode (BN/dropout off).
+        if model.kind == "vit":
+            model.backbone.eval()
         loss_sum = correct = total = 0
         for normal, cp, sc in loader:
             B = normal.shape[0]
@@ -422,42 +409,31 @@ def train_cutpaste(model, records, cfg, device):
             ]).to(device, non_blocking=True)
             optim.zero_grad(set_to_none=True)
             with torch.amp.autocast("cuda", enabled=use_amp):
-                logits = model(x)
-                loss = criterion(logits, y)
+                logits = model(x); loss = criterion(logits, y)
             scaler.scale(loss).backward()
-            scaler.step(optim)
-            scaler.update()
-            scheduler.step()
+            scaler.step(optim); scaler.update(); scheduler.step()
             loss_sum += loss.item() * x.shape[0]
             correct  += (logits.argmax(dim=-1) == y).sum().item()
             total    += x.shape[0]
         if (epoch + 1) % log_every == 0 or epoch == n_epochs - 1:
-            print(f"      epoch {epoch + 1:>4}/{n_epochs}  "
-                  f"loss={loss_sum / max(total, 1):.4f}  "
-                  f"acc={correct / max(total, 1):.4f}  "
+            print(f"      epoch {epoch+1:>4}/{n_epochs}  "
+                  f"loss={loss_sum/max(total,1):.4f}  "
+                  f"acc={correct/max(total,1):.4f}  "
                   f"lr={scheduler.get_last_lr()[0]:.2e}  "
-                  f"elapsed={time.time() - t0:.1f}s", flush=True)
+                  f"elapsed={time.time()-t0:.1f}s", flush=True)
     model.eval()
-    print(f"    [{now_hms()}] training done ({time.time() - t0:.1f}s)")
+    print(f"    [{now_hms()}] training done ({time.time()-t0:.1f}s)")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Scorer 1 — PatchCore-style NN
-# ─────────────────────────────────────────────────────────────────────────────
-def fit_memory_bank(model: CutPasteNet, records: list[ImageRecord],
-                    cfg: "RunConfig", device: torch.device) -> dict:
-    """PatchCore-style: extract patch features from the CutPaste-trained
-    backbone, apply greedy coreset, store memory bank on GPU."""
+# ─── PatchCore-NN scorer (works for both ResNet and ViT models) ──────────────
+def fit_memory_bank(model, records, cfg, device):
     ds = InferenceDataset(records, input_size=cfg.input_size, load_masks=False)
     loader = DataLoader(ds, batch_size=cfg.fit_batch_size, shuffle=False,
                          num_workers=cfg.num_workers, pin_memory=True,
                          persistent_workers=(cfg.num_workers > 0))
-    feats_list = []
-    feature_hw = None
-    feature_dim = None
+    feats_list = []; feature_hw = None; feature_dim = None
     print(f"    [{now_hms()}] extracting train/good patch features "
-          f"({len(records)} images, layers={list(cfg.feature_layers)}, "
-          f"target_layer={cfg.target_layer}, patch_size={cfg.patch_size})...")
+          f"({len(records)} images)...")
     model.eval()
     with torch.inference_mode():
         for x, _, _ in loader:
@@ -468,103 +444,74 @@ def fit_memory_bank(model: CutPasteNet, records: list[ImageRecord],
             if feature_hw is None:
                 P = pf.shape[1]
                 H = W = int(math.isqrt(P))
-                feature_hw = (H, W)
-                feature_dim = pf.shape[2]
+                feature_hw = (H, W); feature_dim = pf.shape[2]
             pf = pf.reshape(-1, pf.shape[-1]).detach().cpu()
             feats_list.append(pf)
-            del x, maps, pf
     all_feats = torch.cat(feats_list, dim=0)
-    del feats_list
-
-    if cfg.coreset_fp16:
-        all_feats = all_feats.half()
-    print(f"    -> {all_feats.shape[0]} patch features (D={feature_dim}, "
-          f"{all_feats.element_size() * all_feats.numel() / 1e9:.2f} GB CPU)")
-
+    if cfg.coreset_fp16: all_feats = all_feats.half()
+    print(f"    -> {all_feats.shape[0]} patch features  D={feature_dim}  "
+          f"{all_feats.element_size() * all_feats.numel() / 1e9:.2f} GB CPU")
     n_select = max(int(cfg.coreset_frac * all_feats.shape[0]), 1)
-    print(f"    [{now_hms()}] greedy coreset ({cfg.coreset_algo}, "
-          f"batch={cfg.coreset_batch}): selecting {n_select} of "
-          f"{all_feats.shape[0]} ({cfg.coreset_frac:.1%})")
+    print(f"    [{now_hms()}] coreset ({cfg.coreset_algo}, "
+          f"batch={cfg.coreset_batch}): {n_select} of {all_feats.shape[0]}")
     idx_cpu = greedy_coreset(all_feats, n_select, device,
                               seed=cfg.seed,
                               project_chunk=cfg.project_chunk,
                               algo=cfg.coreset_algo,
                               batch_size=cfg.coreset_batch)
-    selected_cpu = all_feats[idx_cpu]
+    selected = all_feats[idx_cpu]
     del all_feats
-    selected_gpu = selected_cpu.to(device, non_blocking=True).float()
-    del selected_cpu
-    memory = F.normalize(selected_gpu, p=2, dim=-1)
-    del selected_gpu
+    memory = F.normalize(selected.to(device).float(), p=2, dim=-1)
     memory_dtype = torch.float16 if cfg.memory_dtype == "fp16" else torch.float32
     memory = memory.to(memory_dtype).contiguous()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    print(f"    [{now_hms()}] memory bank  shape={tuple(memory.shape)}  "
-          f"dtype={memory.dtype}  "
-          f"({memory.element_size() * memory.numel() / 1e6:.1f} MB on GPU)")
-    return {
-        "memory": memory,
-        "feature_hw": feature_hw,
-        "feature_dim": feature_dim,
-        "feature_layers": cfg.feature_layers,
-        "target_layer": cfg.target_layer,
-        "patch_size": cfg.patch_size,
-    }
+    if torch.cuda.is_available(): torch.cuda.empty_cache()
+    print(f"    [{now_hms()}] memory bank: {tuple(memory.shape)} {memory.dtype}")
+    return {"memory": memory, "feature_hw": feature_hw,
+            "feature_dim": feature_dim,
+            "feature_layers": cfg.feature_layers,
+            "target_layer": cfg.target_layer,
+            "patch_size": cfg.patch_size}
 
 
 @torch.inference_mode()
-def _nn_compute_score_and_pf(model: CutPasteNet, x: torch.Tensor,
-                              bank: dict, cfg: "RunConfig"):
-    """Shared inner: returns (score_lr (B, H, W) on GPU,
-    pf (B, P, C) L2-normed on GPU). Used by BOTH the standard
-    per-image scoring and the multiview sample-grouped scoring."""
+def _nn_compute_score_and_pf(model, x, bank, cfg):
     maps = model.extract_features(x, layers=bank["feature_layers"])
     pf = patchify_and_combine(maps, patch_size=bank["patch_size"],
                                 target_layer=bank["target_layer"])
-    del maps
     B, P, C = pf.shape
     H = W = int(math.isqrt(P))
     flat = pf.reshape(-1, C)
     N_q = flat.shape[0]
     memory = bank["memory"]
-    memory_dtype = memory.dtype
-    M_total = memory.shape[0]
+    memory_dtype = memory.dtype; M_total = memory.shape[0]
     dist_min = torch.empty(N_q, device=memory.device, dtype=torch.float32)
     for s in range(0, N_q, cfg.score_chunk):
         e = min(N_q, s + cfg.score_chunk)
         q = flat[s:e].to(memory_dtype)
-        max_sim = torch.full((q.shape[0],), -2.0,
-                              device=memory.device, dtype=memory_dtype)
+        max_sim = torch.full((q.shape[0],), -2.0, device=memory.device,
+                              dtype=memory_dtype)
         for ms in range(0, M_total, cfg.memory_chunk):
             me = min(M_total, ms + cfg.memory_chunk)
             sim = q @ memory[ms:me].T
             chunk_max = sim.max(dim=1).values
             torch.maximum(max_sim, chunk_max, out=max_sim)
-            del sim, chunk_max
         dist_min[s:e] = (1.0 - max_sim.float())
-        del q, max_sim
     score_lr = dist_min.reshape(B, H, W)
-    del flat, dist_min
     return score_lr, pf
 
 
 @torch.inference_mode()
 def _nn_score_one(model, x, bank, cfg):
-    """Returns upsampled (B, input_size, input_size) score on CPU."""
     score_lr, _ = _nn_compute_score_and_pf(model, x, bank, cfg)
     score = F.interpolate(score_lr.unsqueeze(1),
                           size=(cfg.input_size, cfg.input_size),
                           mode="bilinear", align_corners=False).squeeze(1)
-    out = score.cpu()
-    del score_lr, score
-    return out
+    return score.cpu()
 
 
 @torch.inference_mode()
 def nn_score_batch(model, x, bank, cfg, tta="none", device=None):
-    if device is None:
-        device = next(model.parameters()).device
+    if device is None: device = next(model.parameters()).device
     x = x.to(device, non_blocking=True)
     acc = None; n = 0
     def _add(s):
@@ -581,572 +528,50 @@ def nn_score_batch(model, x, bank, cfg, tta="none", device=None):
         _add(torch.flip(s, dims=[-2]))
     if tta == "d4":
         for k in (1, 2, 3):
-            s = _nn_score_one(model, torch.rot90(x, k=k, dims=[-2, -1]), bank, cfg)
+            s = _nn_score_one(model, torch.rot90(x, k=k, dims=[-2, -1]),
+                                bank, cfg)
             _add(torch.rot90(s, k=-k, dims=[-2, -1]))
     return acc / max(n, 1)
 
 
-@torch.inference_mode()
-def nn_score_sample_with_siblings(model, x_sample: torch.Tensor,
-                                    bank: dict, cfg: "RunConfig",
-                                    device: torch.device) -> torch.Tensor:
-    """All views of one sample batched together. Returns
-    (V, input_size, input_size) on CPU.
-
-    For each view V_i:
-      - standard score   = 1 - max cos sim to memory bank
-      - sibling bank     = patch features of the OTHER (V-1) views
-      - mv_inconsistency = 1 - max cos sim to sibling bank
-      - boost            = (1 - alpha) + alpha * minmax(mv_inconsistency)
-      - final            = standard * boost   (then upsample)
-
-    TTA is applied to BOTH the score and the patch features, then
-    averaged before sibling computation (spatial transforms inverted
-    first to align). Mirrors PatchCore.score_sample_with_siblings."""
-    x_sample = x_sample.to(device, non_blocking=True)
-
-    acc_score = None
-    acc_pf = None
-    n_acc = 0
-
-    def _add(s, pf):
-        nonlocal acc_score, acc_pf, n_acc
-        if acc_score is None:
-            acc_score = s.clone()
-            acc_pf = pf.clone()
-        else:
-            acc_score += s
-            acc_pf += pf
-        n_acc += 1
-
-    def _invert_pf_flip(pf2, flip_dim_in_grid):
-        """flip_dim_in_grid: -2 for W (hflip undo), -3 for H (vflip undo)."""
-        Bf, Pf, Cf = pf2.shape
-        Hf = Wf = int(math.isqrt(Pf))
-        return torch.flip(pf2.reshape(Bf, Hf, Wf, Cf),
-                          dims=[flip_dim_in_grid]).reshape(Bf, Pf, Cf)
-
-    def _invert_pf_rot(pf2, k):
-        Bf, Pf, Cf = pf2.shape
-        Hf = Wf = int(math.isqrt(Pf))
-        return torch.rot90(pf2.reshape(Bf, Hf, Wf, Cf),
-                            k=-k, dims=[-3, -2]).reshape(Bf, Pf, Cf)
-
-    # Identity pass
-    s, pf = _nn_compute_score_and_pf(model, x_sample, bank, cfg)
-    _add(s, pf)
-    tta = cfg.tta
-    if tta in ("hflip", "hvflip", "d4"):
-        s2, pf2 = _nn_compute_score_and_pf(
-            model, torch.flip(x_sample, dims=[-1]), bank, cfg)
-        _add(torch.flip(s2, dims=[-1]), _invert_pf_flip(pf2, -2))
-    if tta in ("vflip", "hvflip", "d4"):
-        s2, pf2 = _nn_compute_score_and_pf(
-            model, torch.flip(x_sample, dims=[-2]), bank, cfg)
-        _add(torch.flip(s2, dims=[-2]), _invert_pf_flip(pf2, -3))
-    if tta == "d4":
-        for k in (1, 2, 3):
-            s2, pf2 = _nn_compute_score_and_pf(
-                model, torch.rot90(x_sample, k=k, dims=[-2, -1]), bank, cfg)
-            _add(torch.rot90(s2, k=-k, dims=[-2, -1]),
-                 _invert_pf_rot(pf2, k))
-
-    score_lr = acc_score / n_acc
-    pf = acc_pf / n_acc
-    # Re-normalise after averaging (each individual pf was L2-normed).
-    pf = F.normalize(pf, p=2, dim=-1)
-
-    V, P, C = pf.shape
-    H = W = int(math.isqrt(P))
-
-    if V < 2:
-        up = F.interpolate(score_lr.unsqueeze(1),
-                           size=(cfg.input_size, cfg.input_size),
-                           mode="bilinear", align_corners=False).squeeze(1)
-        return up.cpu()
-
-    # Per-view inconsistency vs sibling bank.
-    mv_dist = torch.empty(V, P, device=device, dtype=torch.float32)
-    for i in range(V):
-        siblings = torch.cat([pf[j] for j in range(V) if j != i], dim=0)
-        sim = pf[i].float() @ siblings.float().T   # (P, (V-1)*P)
-        max_sim = sim.max(dim=1).values
-        mv_dist[i] = 1.0 - max_sim
-        del siblings, sim, max_sim
-
-    mv_dist = mv_dist.reshape(V, H, W)
-    sd_min = mv_dist.min(); sd_max = mv_dist.max()
-    if (sd_max - sd_min) > 1e-9:
-        mv_norm = (mv_dist - sd_min) / (sd_max - sd_min)
-    else:
-        mv_norm = torch.zeros_like(mv_dist)
-
-    boost = (1.0 - cfg.mv_alpha) + cfg.mv_alpha * mv_norm
-    boosted = score_lr * boost
-    up = F.interpolate(boosted.unsqueeze(1),
-                       size=(cfg.input_size, cfg.input_size),
-                       mode="bilinear", align_corners=False).squeeze(1)
-    out = up.cpu()
-    del pf, mv_dist, mv_norm, boost, boosted, score_lr, up
-    return out
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scorer 2 — PaDiM (legacy, kept behind --scorer padim)
-# ─────────────────────────────────────────────────────────────────────────────
-def _multi_scale_concat_padim(maps, target_layer):
-    H, W = maps[target_layer].shape[-2:]
-    parts = []
-    for k in sorted(maps.keys()):
-        m = maps[k]
-        if m.shape[-2:] != (H, W):
-            m = F.interpolate(m, size=(H, W), mode="bilinear", align_corners=False)
-        parts.append(m)
-    return torch.cat(parts, dim=1)
-
-
-def fit_padim(model, records, cfg, device, feature_layers):
-    full_dim = sum(LAYER_DIMS[model.backbone_name][l] for l in feature_layers)
-    proj_dim = min(cfg.projection_dim, full_dim)
-    rng = np.random.default_rng(cfg.seed)
-    dim_idx = np.sort(rng.choice(full_dim, size=proj_dim, replace=False))
-    dim_idx = torch.from_numpy(dim_idx).long().to(device)
-    ds = InferenceDataset(records, input_size=cfg.input_size, load_masks=False)
-    loader = DataLoader(ds, batch_size=cfg.fit_batch_size, shuffle=False,
-                         num_workers=cfg.num_workers, pin_memory=True,
-                         persistent_workers=(cfg.num_workers > 0))
-    feats_buf = []
-    H = W = None
-    print(f"    [{now_hms()}] [padim] extracting features "
-          f"(target_layer={cfg.target_layer}, projection {full_dim}->{proj_dim})...")
-    model.eval()
-    with torch.inference_mode():
-        for x, _, _ in loader:
-            x = x.to(device, non_blocking=True)
-            maps = model.extract_features(x, layers=feature_layers)
-            f = _multi_scale_concat_padim(maps, target_layer=cfg.target_layer)
-            B, C, h, w = f.shape
-            H, W = h, w
-            f = f.permute(0, 2, 3, 1).reshape(B, h * w, C)
-            f = f.index_select(dim=2, index=dim_idx)
-            feats_buf.append(f.detach().to(torch.float32).cpu())
-    feats_all = torch.cat(feats_buf, dim=0); N = feats_all.shape[0]
-    feats_gpu = feats_all.to(device).permute(1, 0, 2).contiguous()
-    mean = feats_gpu.mean(dim=1)
-    centered = feats_gpu - mean.unsqueeze(1)
-    cov = torch.einsum("pni,pnj->pij", centered, centered) / max(N - 1, 1)
-    eye = torch.eye(proj_dim, device=device, dtype=cov.dtype).unsqueeze(0)
-    cov = cov + cfg.padim_eps * eye
-    inv_cov = torch.linalg.inv(cov)
-    print(f"    [{now_hms()}] PaDiM fit done  N={N}  H×W={H}×{W}  D={proj_dim}")
-    del feats_gpu, centered, cov, feats_buf, feats_all
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    return {"mean": mean, "inv_cov": inv_cov, "dim_idx": dim_idx,
-            "H": H, "W": W, "target_layer": cfg.target_layer,
-            "feature_layers": feature_layers, "projection_dim": proj_dim}
-
-
-@torch.inference_mode()
-def _padim_score_one(model, x, padim, input_size):
-    maps = model.extract_features(x, layers=padim["feature_layers"])
-    f = _multi_scale_concat_padim(maps, target_layer=padim["target_layer"])
-    B, C, H, W = f.shape
-    f = f.permute(0, 2, 3, 1).reshape(B, H * W, C).index_select(dim=2, index=padim["dim_idx"])
-    delta = f - padim["mean"].unsqueeze(0)
-    tmp = torch.einsum("bpi,pij->bpj", delta, padim["inv_cov"])
-    m_dist = (tmp * delta).sum(dim=-1).clamp_min(0).sqrt()
-    score_lr = m_dist.reshape(B, H, W)
-    score = F.interpolate(score_lr.unsqueeze(1), size=(input_size, input_size),
-                          mode="bilinear", align_corners=False).squeeze(1)
-    return score.cpu()
-
-
-@torch.inference_mode()
-def padim_score_batch(model, x, padim, input_size, tta="none", device=None):
-    if device is None:
-        device = next(model.parameters()).device
-    x = x.to(device, non_blocking=True)
-    acc = None; n = 0
-    def _add(s):
-        nonlocal acc, n
-        if acc is None: acc = s.clone()
-        else: acc += s
-        n += 1
-    _add(_padim_score_one(model, x, padim, input_size))
-    if tta in ("hflip", "hvflip", "d4"):
-        s = _padim_score_one(model, torch.flip(x, dims=[-1]), padim, input_size)
-        _add(torch.flip(s, dims=[-1]))
-    if tta in ("vflip", "hvflip", "d4"):
-        s = _padim_score_one(model, torch.flip(x, dims=[-2]), padim, input_size)
-        _add(torch.flip(s, dims=[-2]))
-    if tta == "d4":
-        for k in (1, 2, 3):
-            s = _padim_score_one(model, torch.rot90(x, k=k, dims=[-2, -1]), padim, input_size)
-            _add(torch.rot90(s, k=-k, dims=[-2, -1]))
-    return acc / max(n, 1)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Metrics + smoothing + q8rle
-# ─────────────────────────────────────────────────────────────────────────────
-def pixel_average_precision(score, gt):
-    s = score.astype(np.float32).ravel()
-    y = gt.astype(np.int32).ravel()
-    if y.sum() == 0: return 0.0
-    try:
-        from sklearn.metrics import average_precision_score
-        return float(average_precision_score(y, s))
-    except Exception:
-        order = np.argsort(-s, kind="stable"); y = y[order]
-        tp = np.cumsum(y); fp = np.cumsum(1 - y)
-        precision = tp / (tp + fp + 1e-12)
-        recall = tp / max(int(y.sum()), 1)
-        recall = np.concatenate([[0.0], recall])
-        precision = np.concatenate([[1.0], precision])
-        return float(np.sum((recall[1:] - recall[:-1]) * precision[1:]))
-
-
-def _gaussian_kernel_1d(sigma, radius):
-    x = np.arange(-radius, radius + 1)
-    k = np.exp(-(x ** 2) / (2 * sigma ** 2))
-    return (k / k.sum()).astype(np.float32)
-
-
-def gaussian_smooth(score, sigma=1.5):
-    if sigma <= 0: return score
-    r = max(1, int(round(3 * sigma)))
-    k = _gaussian_kernel_1d(sigma, r)
-    sx = np.pad(score, ((r, r), (0, 0)), mode="reflect")
-    sx = np.apply_along_axis(lambda v: np.convolve(v, k, mode="valid"), 0, sx)
-    sx = np.pad(sx, ((0, 0), (r, r)), mode="reflect")
-    sx = np.apply_along_axis(lambda v: np.convolve(v, k, mode="valid"), 1, sx)
-    return sx
-
-
-def calibrate_to_unit(scores):
-    flat = np.concatenate([s.ravel() for s in scores])
-    lo = float(np.percentile(flat, 1.0))
-    hi = float(np.percentile(flat, 99.5))
-    if hi <= lo: hi = lo + 1e-6
-    return lo, hi
-
-
-def float_matrix_to_q8rle(x):
-    q = np.clip(np.rint(np.asarray(x, dtype=np.float32) * 255),
-                0, 255).astype(np.uint8)
-    h, w = q.shape
-    flat = q.T.reshape(-1)
-    if flat.size == 0: return f"q8rle {h} {w}"
-    cuts = np.flatnonzero(flat[1:] != flat[:-1]) + 1
-    starts = np.r_[0, cuts]
-    ends = np.r_[cuts, flat.size]
-    parts = ["q8rle", str(h), str(w)]
-    for v, n in zip(flat[starts], ends - starts):
-        parts += [str(int(v)), str(int(n))]
-    return " ".join(parts)
-
-
-def maybe_resize_to_submission(score):
-    if score.shape == (SUBMISSION_H, SUBMISSION_W): return score
-    t = torch.from_numpy(score).unsqueeze(0).unsqueeze(0).float()
-    t = F.interpolate(t, size=(SUBMISSION_H, SUBMISSION_W),
-                      mode="bilinear", align_corners=False)
-    return t.squeeze().numpy()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Experiment tracking
-# ─────────────────────────────────────────────────────────────────────────────
-@dataclass
-class RunConfig:
-    data_root: Path
-    report_dir: Path
-    backbone: str = "resnet18"
-    input_size: int = 256
-    feature_layers: tuple[int, ...] = (1, 2, 3)
-    target_layer: int = 2
-    # Scorer
-    scorer: str = "patchcore"   # "patchcore" | "padim"
-    # Training
-    epochs: int = 256
-    total_iters: int | None = None
-    batch_size: int = 64
-    lr: float = 0.03
-    momentum: float = 0.9
-    weight_decay: float = 3e-5
-    amp: bool = True
-    num_workers: int = 8
-    # Augmentation
-    area_ratio: tuple[float, float] = (0.02, 0.15)
-    aspect_ratio: tuple[float, float] = (0.3, 3.3)
-    color_jitter: float = 0.1
-    scar_width: tuple[int, int] = (10, 25)
-    scar_height: tuple[int, int] = (2, 16)
-    scar_rot: float = 45.0
-    # PaDiM-only
-    projection_dim: int = 100
-    padim_eps: float = 0.01
-    # PatchCore-only
-    coreset_frac: float = 0.05
-    coreset_algo: str = "minibatch"
-    coreset_batch: int = 128
-    coreset_fp16: bool = True
-    patch_size: int = 3
-    score_chunk: int = 4096
-    memory_chunk: int = 16384
-    memory_dtype: str = "fp16"
-    project_chunk: int = 65536
-    # Shared
-    fit_batch_size: int = 32
-    score_batch_size: int = 16
-    smooth_sigma: float = 1.5
-    tta: str = "hvflip"
-    # v4: multiview (PatchCore scorer only)
-    multiview: str = "none"          # "none" | "sibling-bank"
-    mv_alpha: float = 0.5
-    # Bookkeeping
-    seed: int = 0
-    only_classes: list[str] = field(default_factory=list)
-    skip_eval: bool = False
-    skip_submission: bool = False
-    save_checkpoints: bool = False
-    save_banks: bool = False
-    zip_submission: bool = True
-    run_tag: str = ""
-
-
-def make_run_id(cfg: RunConfig) -> str:
-    fp = json.dumps({
-        "method": "cutpaste",
-        "scorer": cfg.scorer,
-        "backbone": cfg.backbone,
-        "input_size": cfg.input_size,
-        "feature_layers": list(cfg.feature_layers),
-        "target_layer": cfg.target_layer,
-        "epochs": cfg.epochs,
-        "total_iters": cfg.total_iters,
-        "batch_size": cfg.batch_size,
-        "lr": cfg.lr,
-        "weight_decay": cfg.weight_decay,
-        "coreset_frac": cfg.coreset_frac if cfg.scorer == "patchcore" else None,
-        "projection_dim": cfg.projection_dim if cfg.scorer == "padim" else None,
-        "smooth_sigma": cfg.smooth_sigma,
-        "tta": cfg.tta,
-        "multiview": cfg.multiview,
-        "mv_alpha": cfg.mv_alpha if cfg.multiview != "none" else 0,
-        "seed": cfg.seed,
-        "v": 4,
-    }, sort_keys=True).encode("utf-8")
-    digest = hashlib.sha1(fp).hexdigest()[:6]
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    bb = BACKBONE_SHORT.get(cfg.backbone, cfg.backbone)
-    budget = (f"it{cfg.total_iters}" if (cfg.total_iters and cfg.total_iters > 0)
-              else f"e{cfg.epochs}")
-    if cfg.scorer == "patchcore":
-        scorer_bits = f"pc_cs{int(cfg.coreset_frac * 100):02d}"
-        if cfg.coreset_algo == "minibatch":
-            scorer_bits += f"mb{cfg.coreset_batch}"
-    else:
-        scorer_bits = f"pd_pd{cfg.projection_dim}"
-    bits = (f"{stamp}_cutpaste-{cfg.scorer}_{bb}_in{cfg.input_size}"
-            f"_{budget}_bs{cfg.batch_size}_{scorer_bits}")
-    if cfg.tta != "none":
-        bits += f"_tta-{cfg.tta}"
-    if cfg.multiview != "none":
-        bits += f"_mv-a{cfg.mv_alpha:.2f}"
-    if cfg.run_tag:
-        bits += f"_{re.sub(r'[^A-Za-z0-9._-]+', '-', cfg.run_tag)}"
-    return f"{bits}_{digest}"
-
-
-def append_to_ablation_master(master_csv: Path, row: dict) -> None:
-    master_csv.parent.mkdir(parents=True, exist_ok=True)
-    existing_rows: list[dict] = []
-    fieldnames: list[str] = []
-    if master_csv.exists():
-        with open(master_csv, "r", newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            fieldnames = list(reader.fieldnames or [])
-            existing_rows = list(reader)
-    for k in row.keys():
-        if k not in fieldnames:
-            fieldnames.append(k)
-    existing_rows.append(row)
-    with open(master_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        for r in existing_rows:
-            w.writerow({k: r.get(k, "") for k in fieldnames})
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Scoring helpers — standard vs sample-grouped
-# ─────────────────────────────────────────────────────────────────────────────
-def _build_transform_cp(input_size: int):
-    return transforms.Compose([
-        transforms.Resize((input_size, input_size)),
-        transforms.ToTensor(),
-        transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
-    ])
-
-
-def _load_one_cp(r: ImageRecord, transform, load_masks: bool,
-                  input_size: int):
-    with Image.open(r.path) as im:
-        x = transform(im.convert("RGB"))
-    if load_masks and r.mask_path is not None:
-        with Image.open(r.mask_path) as mm:
-            mm = mm.convert("L").resize(
-                (input_size, input_size), Image.NEAREST)
-            m = (np.asarray(mm) > 127).astype(np.float32)
-    else:
-        m = np.zeros((input_size, input_size), dtype=np.float32)
-    return x, m
-
-
-def _score_records_standard_cp(score_fn, records: list[ImageRecord],
-                                cfg: RunConfig, load_masks: bool
-                                ) -> tuple[dict, dict]:
-    """Vanilla per-image scoring. `score_fn(x, tta)` returns
-    (B, input_size, input_size) on CPU."""
+# ─── Per-class pipeline ──────────────────────────────────────────────────────
+def _score_records_standard(model, records, bank, cfg, load_masks):
     ds = InferenceDataset(records, input_size=cfg.input_size,
                             load_masks=load_masks)
     loader = DataLoader(ds, batch_size=cfg.score_batch_size, shuffle=False,
                          num_workers=cfg.num_workers, pin_memory=True,
                          persistent_workers=(cfg.num_workers > 0))
-    scores: dict[int, np.ndarray] = {}
-    gts: dict[int, np.ndarray] = {}
-    n_done = 0; last_log = 0
-    with torch.inference_mode():
-        for x, masks, idxs in loader:
-            sm = score_fn(x, cfg.tta).numpy()
-            m_np = masks.numpy()
-            for b in range(sm.shape[0]):
-                scores[int(idxs[b])] = sm[b]
-                gts[int(idxs[b])] = m_np[b]
-            n_done += sm.shape[0]
-            if n_done - last_log >= 200:
-                last_log = n_done
-                print(f"      scored {n_done}/{len(records)}", flush=True)
+    scores, gts = {}, {}
+    for x, masks, idxs in loader:
+        sm = nn_score_batch(model, x, bank, cfg, tta=cfg.tta).numpy()
+        m_np = masks.numpy()
+        for b in range(sm.shape[0]):
+            scores[int(idxs[b])] = sm[b]
+            gts[int(idxs[b])] = m_np[b]
     return scores, gts
 
 
-def _score_records_by_sample_cp(score_sample_fn, records: list[ImageRecord],
-                                 cfg: RunConfig, load_masks: bool
-                                 ) -> tuple[dict, dict]:
-    """Group by sample_id, score all views together via score_sample_fn,
-    which takes a (V, 3, H, W) batch and returns (V, input_size, input_size)."""
-    by_sample: dict[str, list[tuple[int, ImageRecord]]] = defaultdict(list)
-    for idx, r in enumerate(records):
-        sid = r.sample_id or r.path.stem
-        by_sample[sid].append((idx, r))
-    print(f"      grouped {len(records)} images into {len(by_sample)} samples")
-
-    transform = _build_transform_cp(cfg.input_size)
-    scores: dict[int, np.ndarray] = {}
-    gts: dict[int, np.ndarray] = {}
-    n_done = 0; last_log = 0
-    for sid, items in by_sample.items():
-        imgs: list[torch.Tensor] = []
-        masks_np: list[np.ndarray] = []
-        for _idx, r in items:
-            x, m = _load_one_cp(r, transform, load_masks, cfg.input_size)
-            imgs.append(x); masks_np.append(m)
-        x_batch = torch.stack(imgs)
-        sm = score_sample_fn(x_batch).numpy()
-        for k, (idx, _r) in enumerate(items):
-            scores[idx] = sm[k]
-            gts[idx] = masks_np[k]
-        n_done += len(items)
-        if n_done - last_log >= 200:
-            last_log = n_done
-            print(f"      scored {n_done}/{len(records)}", flush=True)
-    return scores, gts
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Per-class pipeline
-# ─────────────────────────────────────────────────────────────────────────────
-def run_one_class(cls: str, records_all, cfg: RunConfig, run_dir: Path,
-                   device: torch.device,
-                   local_saver: "LocalPredSaver | None" = None) -> dict:
-    """If `local_saver` is given, every local-val (score_map, gt_mask)
-    pair is appended to it so the stacker can train on the raw pixel
-    predictions later."""
+def run_one_class(cls, records_all, cfg, run_dir, device, local_saver=None):
     hr(f"CLASS {cls}", "─")
     t_start = time.time()
-
     train_good = [r for r in records_all if r.cls == cls and r.split == "train_good"]
     train_anom = [r for r in records_all if r.cls == cls and r.split == "train_anomaly"]
     test       = [r for r in records_all if r.cls == cls and r.split == "test"]
-    print(f"  train_good={len(train_good)}  "
-          f"train_anomaly={len(train_anom)}  test={len(test)}")
+    print(f"  train_good={len(train_good)}  train_anomaly={len(train_anom)}  test={len(test)}")
     if not train_good:
         return {"class": cls, "class_mean_ap": float("nan"),
                 "eval_rows": [], "test_results": [], "elapsed_min": 0.0}
 
-    model = CutPasteNet(backbone=cfg.backbone, num_classes=3).to(device)
+    model = build_cutpaste_net(cfg, num_classes=3).to(device)
     train_cutpaste(model, train_good, cfg, device)
-    if cfg.save_checkpoints:
-        ck = run_dir / "ckpt" / f"{cls}_model.pt"
-        ck.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(model.state_dict(), ck)
-        print(f"    saved checkpoint -> {ck}")
+    bank = fit_memory_bank(model, train_good, cfg, device)
 
-    # Build the scorer-specific structure + scoring closures.
-    if cfg.scorer == "patchcore":
-        bank = fit_memory_bank(model, train_good, cfg, device)
-        def _score(x, tta):
-            return nn_score_batch(model, x, bank, cfg, tta=tta, device=device)
-        def _score_sample(x_sample):
-            return nn_score_sample_with_siblings(
-                model, x_sample, bank, cfg, device=device)
-        bank_for_save = bank
-    elif cfg.scorer == "padim":
-        if cfg.multiview != "none":
-            raise SystemExit(
-                "[FATAL] --multiview sibling-bank requires --scorer patchcore "
-                "(PaDiM has no per-pixel features compatible with the "
-                "sibling-bank shape).")
-        padim = fit_padim(model, train_good, cfg, device,
-                            feature_layers=cfg.feature_layers)
-        def _score(x, tta):
-            return padim_score_batch(model, x, padim,
-                                      input_size=cfg.input_size,
-                                      tta=tta, device=device)
-        _score_sample = None
-        bank_for_save = padim
-    else:
-        raise ValueError(f"unknown scorer: {cfg.scorer}")
-
-    if cfg.save_banks:
-        bp = run_dir / "banks" / f"{cls}_{cfg.scorer}.pt"
-        bp.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({k: v.cpu() if torch.is_tensor(v) else v
-                    for k, v in bank_for_save.items()}, bp)
-        print(f"    saved bank -> {bp}")
-
-    # Pick scoring helper: vanilla (per-image) or sample-grouped (multiview).
-    if cfg.multiview == "sibling-bank":
-        def score_records(records, load_masks):
-            return _score_records_by_sample_cp(
-                _score_sample, records, cfg, load_masks)
-    else:
-        def score_records(records, load_masks):
-            return _score_records_standard_cp(
-                _score, records, cfg, load_masks)
-
-    eval_rows = []
-    class_mean_ap = float("nan")
+    eval_rows = []; class_mean_ap = float("nan")
     if not cfg.skip_eval and train_anom:
-        sub(f"local validation (tta={cfg.tta}, scorer={cfg.scorer}, "
-            f"multiview={cfg.multiview}"
-            + (f", alpha={cfg.mv_alpha}" if cfg.multiview != "none" else "")
-            + ")")
-        scores_raw, gts = score_records(train_anom, load_masks=True)
-        scores_by_idx: dict[int, np.ndarray] = {}
-        gt_by_idx: dict[int, np.ndarray] = {}
+        sub(f"local validation (tta={cfg.tta})")
+        scores_raw, gts = _score_records_standard(model, train_anom, bank, cfg,
+                                                       load_masks=True)
+        scores_by_idx, gt_by_idx = {}, {}
         for r_idx, sm_raw in scores_raw.items():
             scores_by_idx[r_idx] = gaussian_smooth(sm_raw, cfg.smooth_sigma)
             gt_by_idx[r_idx] = gts[r_idx]
@@ -1156,38 +581,29 @@ def run_one_class(cls: str, records_all, cfg: RunConfig, run_dir: Path,
             ap = pixel_average_precision(s, gt_by_idx[ridx])
             by_anom[r.anomaly_type or "?"].append(ap)
             if local_saver is not None:
-                local_saver.add(
-                    cls=cls,
-                    anomaly_type=r.anomaly_type or "unknown",
-                    view_idx=int(ridx),
-                    score_map=s,
-                    gt_mask=gt_by_idx[ridx],
-                    image_path=r.path,
-                )
-        print(f"    {'anomaly_type':<14} {'n_views':>8} "
-              f"{'pixel-AP (mean ± std)':>26}")
+                local_saver.add(cls=cls, anomaly_type=r.anomaly_type or "unknown",
+                                 view_idx=int(ridx), score_map=s,
+                                 gt_mask=gt_by_idx[ridx], image_path=r.path)
+        print(f"    {'anomaly_type':<14} {'n_views':>8} {'pixel-AP (mean ± std)':>26}")
         per_type_means = []
         for a_type in sorted(by_anom):
             arr = np.asarray(by_anom[a_type])
             per_type_means.append(float(arr.mean()))
-            print(f"    {a_type:<14} {len(arr):>8} "
-                  f"{arr.mean():>15.4f} ± {arr.std():.4f}")
+            print(f"    {a_type:<14} {len(arr):>8} {arr.mean():>15.4f} ± {arr.std():.4f}")
             eval_rows.append({"class": cls, "anomaly_type": a_type,
-                              "n_views": int(len(arr)),
-                              "ap_mean": float(arr.mean()),
-                              "ap_std": float(arr.std()),
-                              "ap_min": float(arr.min()),
-                              "ap_max": float(arr.max())})
+                               "n_views": int(len(arr)),
+                               "ap_mean": float(arr.mean()),
+                               "ap_std":  float(arr.std()),
+                               "ap_min":  float(arr.min()),
+                               "ap_max":  float(arr.max())})
         class_mean_ap = float(np.mean(per_type_means)) if per_type_means else 0.0
         print(f"    >>> class {cls} mean pixel-AP: {class_mean_ap:.4f}")
 
     test_results = []
     if not cfg.skip_submission and test:
-        sub(f"scoring {len(test)} test images "
-            f"(multiview={cfg.multiview}"
-            + (f", alpha={cfg.mv_alpha}" if cfg.multiview != "none" else "")
-            + ")")
-        scores_raw, _ = score_records(test, load_masks=False)
+        sub(f"scoring {len(test)} test images")
+        scores_raw, _ = _score_records_standard(model, test, bank, cfg,
+                                                     load_masks=False)
         for r_idx, sm_raw in scores_raw.items():
             sm = gaussian_smooth(sm_raw, cfg.smooth_sigma)
             sm = maybe_resize_to_submission(sm)
@@ -1195,16 +611,14 @@ def run_one_class(cls: str, records_all, cfg: RunConfig, run_dir: Path,
 
     elapsed_min = (time.time() - t_start) / 60.0
     print(f"  class {cls} done in {elapsed_min:.1f} min")
-    del model
-    if cfg.scorer == "patchcore": del bank
-    else: del padim
+    del model, bank
     if torch.cuda.is_available(): torch.cuda.empty_cache()
     return {"class": cls, "class_mean_ap": class_mean_ap,
             "eval_rows": eval_rows, "test_results": test_results,
             "elapsed_min": elapsed_min}
 
 
-def write_submission(all_test_results, run_dir: Path, zip_it: bool = True) -> Path:
+def write_submission(all_test_results, run_dir, zip_it=True):
     sub("calibrating scores and writing submission.csv")
     scores = [sm for _, sm in all_test_results]
     if not scores: raise RuntimeError("no test scores")
@@ -1214,8 +628,7 @@ def write_submission(all_test_results, run_dir: Path, zip_it: bool = True) -> Pa
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     n = 0
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        w.writerow(["ID", "Label"])
+        w = csv.writer(f); w.writerow(["ID", "Label"])
         for r, sm in all_test_results:
             normed = np.clip((sm - lo) / (hi - lo), 0.0, 1.0).astype(np.float32)
             w.writerow([r.path.stem, float_matrix_to_q8rle(normed)])
@@ -1231,9 +644,81 @@ def write_submission(all_test_results, run_dir: Path, zip_it: bool = True) -> Pa
     return csv_path
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Config + main ───────────────────────────────────────────────────────────
+@dataclass
+class RunConfig:
+    data_root: Path
+    report_dir: Path
+    backbone: str = "resnet18"
+    input_size: int = 256
+    feature_layers: tuple[int, ...] = (1, 2, 3)
+    target_layer: int = 2
+    # ViT mode extras
+    vit_proj_dim: int = 256
+    # Training
+    epochs: int = 256
+    total_iters: int | None = 2500
+    batch_size: int = 64
+    lr: float = 0.03           # SGD lr for ResNet mode
+    lr_head: float = 1e-4      # AdamW lr for ViT mode
+    momentum: float = 0.9
+    weight_decay: float = 3e-5
+    amp: bool = True
+    num_workers: int = 8
+    # Augmentation
+    area_ratio: tuple[float, float] = (0.02, 0.15)
+    aspect_ratio: tuple[float, float] = (0.3, 3.3)
+    color_jitter: float = 0.1
+    scar_width: tuple[int, int] = (10, 25)
+    scar_height: tuple[int, int] = (2, 16)
+    scar_rot: float = 45.0
+    # PatchCore-NN
+    coreset_frac: float = 0.05
+    coreset_algo: str = "minibatch"
+    coreset_batch: int = 128
+    coreset_fp16: bool = True
+    patch_size: int = 3
+    score_chunk: int = 4096
+    memory_chunk: int = 16384
+    memory_dtype: str = "fp16"
+    project_chunk: int = 65536
+    fit_batch_size: int = 32
+    score_batch_size: int = 16
+    smooth_sigma: float = 1.5
+    tta: str = "hvflip"
+    # Bookkeeping
+    seed: int = 0
+    only_classes: list[str] = field(default_factory=list)
+    skip_eval: bool = False
+    skip_submission: bool = False
+    zip_submission: bool = True
+    run_tag: str = ""
+
+
+def make_run_id(cfg):
+    fp = json.dumps({
+        "method": "cutpaste", "v": 5,
+        "backbone": cfg.backbone, "input_size": cfg.input_size,
+        "feature_layers": list(cfg.feature_layers),
+        "target_layer": cfg.target_layer,
+        "total_iters": cfg.total_iters, "batch_size": cfg.batch_size,
+        "lr": cfg.lr, "lr_head": cfg.lr_head,
+        "vit_proj_dim": cfg.vit_proj_dim,
+        "coreset_frac": cfg.coreset_frac,
+        "smooth_sigma": cfg.smooth_sigma, "tta": cfg.tta, "seed": cfg.seed,
+    }, sort_keys=True).encode("utf-8")
+    digest = hashlib.sha1(fp).hexdigest()[:6]
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    bb = BACKBONE_SHORT.get(cfg.backbone, cfg.backbone)
+    budget = (f"it{cfg.total_iters}" if cfg.total_iters else f"e{cfg.epochs}")
+    bits = (f"{stamp}_cutpaste-pcnn_{bb}_in{cfg.input_size}"
+            f"_{budget}_bs{cfg.batch_size}_pc_cs{int(cfg.coreset_frac*100):02d}"
+            f"mb{cfg.coreset_batch}")
+    if cfg.tta != "none": bits += f"_tta-{cfg.tta}"
+    if cfg.run_tag: bits += f"_{re.sub(r'[^A-Za-z0-9._-]+', '-', cfg.run_tag)}"
+    return f"{bits}_{digest}"
+
+
 def main():
     ap = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1241,35 +726,30 @@ def main():
     ap.add_argument("--data-root",  type=Path, default=DEFAULT_DATA_ROOT)
     ap.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
     ap.add_argument("--backbone", default="resnet18",
-                    choices=["resnet18", "resnet50"])
+                    help="ResNet (resnet18/50) or DINOv2/v3 name.")
     ap.add_argument("--input-size", type=int, default=256,
-                    choices=[224, 256, 320, 384, 448, 512])
+                    help="Multiple of patch-size for ViT backbones.")
     ap.add_argument("--feature-layers", type=int, nargs="+", default=[1, 2, 3])
     ap.add_argument("--target-layer", type=int, default=2)
-    # Scorer
-    ap.add_argument("--scorer", default="patchcore",
-                    choices=["patchcore", "padim"])
-    # Training
+    ap.add_argument("--vit-proj-dim", type=int, default=256,
+                    help="ViT mode: width of the per-layer 1x1 projection head.")
     ap.add_argument("--epochs", type=int, default=256)
-    ap.add_argument("--total-iters", type=int, default=None,
-                    help="overrides --epochs (recommended: 2500)")
+    ap.add_argument("--total-iters", type=int, default=2500)
     ap.add_argument("--batch-size", type=int, default=64)
-    ap.add_argument("--lr", type=float, default=0.03)
+    ap.add_argument("--lr", type=float, default=0.03,
+                    help="ResNet mode: SGD lr. ViT mode ignores this.")
+    ap.add_argument("--lr-head", type=float, default=1e-4,
+                    help="ViT mode: AdamW lr for the trainable head.")
     ap.add_argument("--momentum", type=float, default=0.9)
     ap.add_argument("--weight-decay", type=float, default=3e-5)
     ap.add_argument("--no-amp", action="store_true")
     ap.add_argument("--num-workers", type=int, default=8)
-    # Augmentation
     ap.add_argument("--area-ratio", type=float, nargs=2, default=[0.02, 0.15])
     ap.add_argument("--aspect-ratio", type=float, nargs=2, default=[0.3, 3.3])
     ap.add_argument("--color-jitter", type=float, default=0.1)
     ap.add_argument("--scar-width", type=int, nargs=2, default=[10, 25])
     ap.add_argument("--scar-height", type=int, nargs=2, default=[2, 16])
     ap.add_argument("--scar-rot", type=float, default=45.0)
-    # PaDiM-only
-    ap.add_argument("--projection-dim", type=int, default=100)
-    ap.add_argument("--padim-eps", type=float, default=0.01)
-    # PatchCore-only
     ap.add_argument("--coreset-frac", type=float, default=0.05)
     ap.add_argument("--coreset-algo", default="minibatch",
                     choices=["minibatch", "exact"])
@@ -1280,64 +760,43 @@ def main():
     ap.add_argument("--memory-chunk", type=int, default=16384)
     ap.add_argument("--memory-dtype", default="fp16", choices=["fp16", "fp32"])
     ap.add_argument("--project-chunk", type=int, default=65536)
-    # Shared
     ap.add_argument("--fit-batch-size", type=int, default=32)
     ap.add_argument("--score-batch-size", type=int, default=16)
     ap.add_argument("--smooth-sigma", type=float, default=1.5)
     ap.add_argument("--tta", default="hvflip",
                     choices=["none", "hflip", "vflip", "hvflip", "d4"])
-    # Multiview (PatchCore scorer only)
-    ap.add_argument("--multiview", default="none",
-                    choices=["none", "sibling-bank"],
-                    help="`sibling-bank`: at scoring time, batch all views "
-                         "of a sample and use the OTHER views' patch "
-                         "features as a per-sample memory bank that boosts "
-                         "view-inconsistent pixels. Requires "
-                         "--scorer patchcore.")
-    ap.add_argument("--mv-alpha", type=float, default=0.5,
-                    help="Multi-view blend weight in [0, 1]. 0 disables "
-                         "the boost; 1 fully replaces the standard score "
-                         "with the inconsistency signal.")
-    # Bookkeeping
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--only-classes", nargs="*", default=[])
     ap.add_argument("--skip-eval", action="store_true")
     ap.add_argument("--skip-submission", action="store_true")
-    ap.add_argument("--save-checkpoints", action="store_true")
-    ap.add_argument("--save-banks", action="store_true")
     ap.add_argument("--no-zip", action="store_true")
-    ap.add_argument("--no-save-local-preds", action="store_true",
-                    help="Disable saving local_predictions.npz "
-                         "(default: save).")
+    ap.add_argument("--no-save-local-preds", action="store_true")
     ap.add_argument("--run-tag", default="")
     args = ap.parse_args()
 
     feature_layers = tuple(sorted(set(args.feature_layers)))
-    for l in feature_layers:
-        if l not in LAYER_DIMS[args.backbone]:
-            raise SystemExit(
-                f"[FATAL] feature_layer {l} not valid for {args.backbone}; "
-                f"valid: {sorted(LAYER_DIMS[args.backbone])}")
     if args.target_layer not in feature_layers:
-        raise SystemExit(
-            f"[FATAL] --target-layer {args.target_layer} must be in "
-            f"--feature-layers {list(feature_layers)}.")
-
-    if not (0.0 <= args.mv_alpha <= 1.0):
-        raise SystemExit(f"[FATAL] --mv-alpha must be in [0, 1]; "
-                          f"got {args.mv_alpha}")
-    if args.multiview != "none" and args.scorer != "patchcore":
-        raise SystemExit(
-            f"[FATAL] --multiview {args.multiview} requires "
-            f"--scorer patchcore; got --scorer {args.scorer}.")
+        raise SystemExit(f"[FATAL] --target-layer {args.target_layer} not in "
+                          f"--feature-layers {list(feature_layers)}")
+    # Patch-size sanity for ViT
+    if is_dino_backbone(args.backbone):
+        from dinov3_loader import (DINOV2_SPECS as _V2,
+                                       DINOV3_VIT_SPECS as _V3V,
+                                       DINOV3_CONVNEXT_SPECS as _V3C)
+        if args.backbone in _V2: patch = _V2[args.backbone]["patch"]
+        elif args.backbone in _V3V: patch = _V3V[args.backbone]["patch"]
+        else: patch = _V3C[args.backbone]["patch_eff"]
+        if args.input_size % patch != 0:
+            raise SystemExit(f"[FATAL] --input-size {args.input_size} not "
+                              f"multiple of {patch}")
 
     cfg = RunConfig(
         data_root=args.data_root, report_dir=args.report_dir,
         backbone=args.backbone, input_size=args.input_size,
         feature_layers=feature_layers, target_layer=args.target_layer,
-        scorer=args.scorer,
+        vit_proj_dim=args.vit_proj_dim,
         epochs=args.epochs, total_iters=args.total_iters,
-        batch_size=args.batch_size, lr=args.lr,
+        batch_size=args.batch_size, lr=args.lr, lr_head=args.lr_head,
         momentum=args.momentum, weight_decay=args.weight_decay,
         amp=not args.no_amp, num_workers=args.num_workers,
         area_ratio=tuple(args.area_ratio),
@@ -1346,7 +805,6 @@ def main():
         scar_width=tuple(args.scar_width),
         scar_height=tuple(args.scar_height),
         scar_rot=args.scar_rot,
-        projection_dim=args.projection_dim, padim_eps=args.padim_eps,
         coreset_frac=args.coreset_frac,
         coreset_algo=args.coreset_algo,
         coreset_batch=args.coreset_batch,
@@ -1359,61 +817,35 @@ def main():
         fit_batch_size=args.fit_batch_size,
         score_batch_size=args.score_batch_size,
         smooth_sigma=args.smooth_sigma, tta=args.tta,
-        multiview=args.multiview, mv_alpha=args.mv_alpha,
         seed=args.seed, only_classes=args.only_classes,
         skip_eval=args.skip_eval, skip_submission=args.skip_submission,
-        save_checkpoints=args.save_checkpoints,
-        save_banks=args.save_banks,
-        zip_submission=not args.no_zip,
-        run_tag=args.run_tag,
+        zip_submission=not args.no_zip, run_tag=args.run_tag,
     )
     cfg.report_dir.mkdir(parents=True, exist_ok=True)
-    torch.manual_seed(cfg.seed)
-    np.random.seed(cfg.seed)
-    random.seed(cfg.seed)
-
+    torch.manual_seed(cfg.seed); np.random.seed(cfg.seed); random.seed(cfg.seed)
     run_id = make_run_id(cfg)
     run_dir = cfg.report_dir / "runs" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     with tee_to(run_dir / "run_log.txt"):
-        hr(f"CUTPASTE v4 ({cfg.scorer}+multiview) — RUN {run_id}", "█")
+        hr(f"CUTPASTE v5 (backbone={cfg.backbone}) — RUN {run_id}", "█")
         print(f"  data_root        : {cfg.data_root}")
         print(f"  run_dir          : {run_dir}")
-        print(f"  scorer           : {cfg.scorer}")
         print(f"  backbone         : {cfg.backbone}")
         print(f"  input_size       : {cfg.input_size}")
         print(f"  feature_layers   : {list(cfg.feature_layers)}")
         print(f"  target_layer     : {cfg.target_layer}")
-        if cfg.total_iters is not None:
-            print(f"  total_iters      : {cfg.total_iters}  "
-                  f"(overrides --epochs={cfg.epochs})")
+        print(f"  encoder_mode     : "
+              f"{'frozen (ViT)' if is_dino_backbone(cfg.backbone) else 'e2e (ResNet)'}")
+        if is_dino_backbone(cfg.backbone):
+            print(f"  vit_proj_dim     : {cfg.vit_proj_dim}")
+            print(f"  lr_head          : {cfg.lr_head}")
         else:
-            print(f"  epochs           : {cfg.epochs}")
-        print(f"  batch_size       : {cfg.batch_size}  (effective {3 * cfg.batch_size})")
-        print(f"  lr / wd / mom    : {cfg.lr} / {cfg.weight_decay} / {cfg.momentum}")
-        print(f"  amp              : {cfg.amp}    num_workers: {cfg.num_workers}")
-        if cfg.scorer == "patchcore":
-            print(f"  [patchcore] coreset_frac={cfg.coreset_frac:.1%}  "
-                  f"algo={cfg.coreset_algo}  batch={cfg.coreset_batch}  "
-                  f"coreset_fp16={cfg.coreset_fp16}")
-            print(f"  [patchcore] patch_size={cfg.patch_size}  "
-                  f"memory_dtype={cfg.memory_dtype}  "
-                  f"score_chunk={cfg.score_chunk}  "
-                  f"memory_chunk={cfg.memory_chunk}")
-        else:
-            print(f"  [padim] projection_dim={cfg.projection_dim}  "
-                  f"eps={cfg.padim_eps}")
-        print(f"  score_batch_size : {cfg.score_batch_size}")
-        print(f"  smooth_sigma     : {cfg.smooth_sigma}")
-        print(f"  tta              : {cfg.tta}")
-        print(f"  multiview        : {cfg.multiview}  alpha={cfg.mv_alpha}")
-        print(f"  save_local_preds : {not args.no_save_local_preds}")
+            print(f"  lr               : {cfg.lr} (SGD)")
+        print(f"  total_iters      : {cfg.total_iters}")
+        print(f"  batch_size       : {cfg.batch_size}")
         print(f"  device           : {device}")
-        if torch.cuda.is_available():
-            print(f"                    {torch.cuda.get_device_name(0)}, "
-                  f"{torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
 
         with open(run_dir / "config.json", "w") as f:
             json.dump({k: (list(v) if isinstance(v, tuple) else
@@ -1423,20 +855,17 @@ def main():
         t_total = time.time()
         records = scan_dataset(cfg.data_root)
         if not records:
-            print("\n[FATAL] no records found"); return
+            print("[FATAL] no records found"); return
         classes = sorted({r.cls for r in records})
         if cfg.only_classes:
             classes = [c for c in classes if c in set(cfg.only_classes)]
-        print(f"\n  running on {len(classes)} class(es): {', '.join(classes)}")
+        print(f"  running on {len(classes)} class(es): {', '.join(classes)}")
 
-        local_saver: LocalPredSaver | None = None
-        if not cfg.skip_eval and not args.no_save_local_preds:
-            local_saver = LocalPredSaver()
-
-        all_test_results = []
-        all_eval_rows = []
-        class_aps = {}
-        class_elapsed = {}
+        local_saver = (LocalPredSaver()
+                        if (not cfg.skip_eval and not args.no_save_local_preds)
+                        else None)
+        all_test_results, all_eval_rows = [], []
+        class_aps, class_elapsed = {}, {}
         for cls in classes:
             res = run_one_class(cls, records, cfg, run_dir, device,
                                   local_saver=local_saver)
@@ -1444,12 +873,10 @@ def main():
             all_eval_rows.extend(res["eval_rows"])
             class_aps[cls] = res["class_mean_ap"]
             class_elapsed[cls] = res["elapsed_min"]
-
         if local_saver is not None and len(local_saver) > 0:
             local_saver.save(run_dir / "local_predictions.npz")
 
         hr("LOCAL VALIDATION SUMMARY", "=")
-        print(f"  {'class':<10} {'mean pixel-AP':>15} {'time (min)':>12}")
         for cls in classes:
             print(f"  {cls:<10} {class_aps.get(cls, float('nan')):>15.4f} "
                   f"{class_elapsed.get(cls, 0):>12.1f}")
@@ -1468,39 +895,35 @@ def main():
 
         if not cfg.skip_submission and all_test_results:
             hr("SUBMISSION", "=")
-            write_submission(all_test_results, run_dir, zip_it=cfg.zip_submission)
+            save_test_predictions(all_test_results, run_dir)
+            write_submission(all_test_results, run_dir,
+                              zip_it=cfg.zip_submission)
             print(f"\n  Upload: {run_dir / 'submission.zip'}")
 
         master_csv = cfg.report_dir / "ablation_master.csv"
-        mv_notes = ""
-        if cfg.multiview != "none":
-            mv_notes = f" multiview={cfg.multiview} mv_alpha={cfg.mv_alpha}"
+        bb_short = BACKBONE_SHORT.get(cfg.backbone, cfg.backbone)
         row = {
-            "run_id": run_id,
-            "run_tag": cfg.run_tag,
+            "run_id": run_id, "run_tag": cfg.run_tag,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "backbone": cfg.backbone,
+            "backbone": bb_short,
             "feature_layers": "+".join(str(l) for l in cfg.feature_layers),
-            "target_layer": cfg.target_layer,
-            "input_size": cfg.input_size,
-            "smooth_sigma": cfg.smooth_sigma,
-            "tta": cfg.tta,
+            "target_layer": cfg.target_layer, "input_size": cfg.input_size,
+            "smooth_sigma": cfg.smooth_sigma, "tta": cfg.tta,
             "batch_size": cfg.batch_size,
             "score_batch_size": cfg.score_batch_size,
-            "seed": cfg.seed,
-            "n_classes": len(classes),
+            "seed": cfg.seed, "n_classes": len(classes),
             **{f"AP_{c}": f"{class_aps.get(c, float('nan')):.4f}"
                 for c in sorted(class_aps)},
             "AP_overall": f"{overall_ap:.4f}",
             "runtime_min": f"{(time.time() - t_total) / 60:.1f}",
             "submission_path": str(run_dir / "submission.zip")
                                 if not cfg.skip_submission else "",
-            "notes": (f"cutpaste v4 scorer={cfg.scorer} "
+            "notes": (f"cutpaste v5 backbone={cfg.backbone} "
                       f"{'it' + str(cfg.total_iters) if cfg.total_iters else 'e' + str(cfg.epochs)} "
-                      f"bs{cfg.batch_size}{mv_notes}"),
+                      f"bs{cfg.batch_size}"),
         }
         append_to_ablation_master(master_csv, row)
-        print(f"\n  ablation row appended -> {master_csv}")
+        print(f"  ablation row appended -> {master_csv}")
         hr(f"DONE — run_id={run_id}", "█")
 
 

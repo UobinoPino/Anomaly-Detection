@@ -136,6 +136,7 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
+from test_preds_saver import save_test_predictions
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from patchcore_baseline_v2 import (
@@ -1052,6 +1053,7 @@ def main():
 
         if not cfg.skip_submission and all_test_results:
             hr("SUBMISSION", "=")
+            save_test_predictions(all_test_results, run_dir)
             write_submission(all_test_results, run_dir,
                               zip_it=cfg.zip_submission)
             print(f"\n  Upload: {run_dir / 'submission.zip'}")

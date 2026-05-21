@@ -1,45 +1,73 @@
-"""Spacepresso baseline v7 — adds consensus-v3 multiview path.
+"""Spacepresso PatchCore baseline v8 — adds DINOv3 + DINOv2-with-registers.
 
-Drop-in successor to v6. Both v5 efficiency tricks and the v6 sibling-bank
-path are preserved unchanged. The only new feature is a third
-`--multiview` option:
+# v8 changelog (additive over v7 — no behavioural change for existing runs)
 
-  --multiview consensus-v3
+  * `FeatureExtractor` now routes ALL DINO backbones through
+    `dinov3_loader.load_dino_backbone()`. New accepted `--backbone` names:
 
-which delegates to `multiview_consensus.py` for:
-  (B) per-view rank normalisation (train_good empirical CDF per view)
-  (D) good-filtered sibling bank   (anomalous sibling patches excluded)
-  (A) agreement-only boost         (per-sample multiplicative boost ≥ 1)
+      DINOv2 plain (unchanged):
+        dinov2_vits14, dinov2_vitb14, dinov2_vitl14, dinov2_vitg14
+      DINOv2 with registers (new — drop-in upgrade, no gating):
+        dinov2_vits14_reg, dinov2_vitb14_reg, dinov2_vitl14_reg,
+        dinov2_vitg14_reg
+      DINOv3 ViT (Aug 2025; trained on 1.7B images vs DINOv2's 142M;
+                  patch=16, 4 register tokens; requires Meta access):
+        dinov3_vits16, dinov3_vits16plus, dinov3_vitb16, dinov3_vitl16,
+        dinov3_vith16plus, dinov3_vit7b16
+      DINOv3 ConvNeXt (multi-scale CNN backbone):
+        dinov3_convnext_{tiny,small,base,large}
 
-The previous sibling-bank path had a self-suppression flaw on
-anomalies visible in ≥2 views (sibling bank contained the anomaly →
-mv_inc collapsed → boost ≈ 1-α suppressed real defects). consensus-v3
-fixes this without modifying the no-multiview / sibling-bank paths.
+    Plain dinov2_vits14/b14/l14/g14 work exactly as in v7 — your existing
+    exp7 / exp12mv / exp14c / exp15c runs reproduce.
 
-# v6 (recap) — sibling-bank multiview (PRESERVED for back-compat)
+  * `BACKBONE_CHANNELS` table extended so multi-scale fusion code keeps
+    working for all backbones.
+  * Patch-size sanity now reads from the `DinoInfo` struct: 14 for v2,
+    16 for v3 ViT, effective stride 4 for v3 ConvNeXt (stage 0).
+  * Existing public functions/classes keep their signatures. Files that
+    import `FeatureExtractor`, `BACKBONE_CHANNELS`, `BACKBONE_SHORT`,
+    `DINOV2_BACKBONES`, `DINOV2_NBLOCKS`, `RESNET_BACKBONES`,
+    `ALL_BACKBONES` from this module — i.e. fastflow_baseline.py,
+    cfa_baseline.py, uniad_baseline.py, reverse_distillation_baseline.py,
+    efficientad_baseline.py, cutpaste_baseline.py, draem_baseline.py,
+    textad_baseline.py — pick up the new names automatically.
 
-  --multiview sibling-bank
-  --mv-alpha FLOAT (default: 0.5)
+# DINOv3 access setup (do this once)
 
-  Per view i: standard PatchCore score, then sibling-bank inconsistency
-  vs the OTHER views' raw patch features. mv_inc min-max normalised
-  per-sample, then `boost = (1-α) + α*mv_inc`. Multiplicative boost
-  CAN suppress (boost < 1 when mv_norm ≈ 0). Kept for comparison only.
+  DINOv3 weights are gated. Two paths supported:
 
-# v5 (recap) — efficiency tricks (unchanged)
-  - CPU-resident feature tensor, 32-d random projection on GPU for coreset
-  - Mini-batch greedy k-center (sync-free, ~50-100x faster than naive)
-  - fp16 memory bank + chunked NN scoring (score_chunk × memory_chunk)
-  - TTA-aware scoring with average over flips
-  - Per-(class, anomaly_type) local-AP harness
-  - DINOv2 ViT-S/14 / -B/14 / -L/14 backbones via torch.hub
+    OPTION A — torch.hub local (preferred for offline clusters):
+        git clone https://github.com/facebookresearch/dinov3 $HOME/dinov3_repo
+        export DINOV3_REPO=$HOME/dinov3_repo
+        # request access at
+        #   https://ai.meta.com/resources/models-and-libraries/dinov3-downloads/
+        # download the {name}_*.pth file emailed to you:
+        mkdir -p $HOME/dinov3_weights
+        export DINOV3_WEIGHTS=$HOME/dinov3_weights
+        # wget the URL Meta sent you into $DINOV3_WEIGHTS
 
-# v7 + stacker hook (unchanged)
+    OPTION B — HuggingFace transformers (auto-download):
+        uv pip install 'transformers>=4.45'
+        # accept license at
+        #   https://huggingface.co/facebook/dinov3-vitX16-pretrain-lvd1689m
+        huggingface-cli login
 
-This file writes a `local_predictions.npz` per run for downstream stacker
-training (see local_preds_saver.py). The hook is non-invasive.
+  If neither is configured, only DINOv2 (plain + reg) and ResNet backbones
+  work. The DINOv2-with-registers variants are a strict upgrade over plain
+  DINOv2 (Darcet et al. ICLR 2024 — register tokens absorb high-norm
+  outliers that hurt dense prediction) and require no gating — they are
+  the safest first thing to try.
+
+# v7 (recap) — consensus-v3 multiview path
+# v6 (recap) — sibling-bank multiview
+# v5 (recap) — CPU features + GPU projection coreset, minibatch greedy
+              k-center, fp16 memory bank, chunked NN scoring.
+
+# Stacker hook (v7+) — unchanged
+# Writes `local_predictions.npz` per run.
 """
 from __future__ import annotations
+from test_preds_saver import save_test_predictions
 
 import argparse
 import csv
@@ -72,6 +100,16 @@ from torchvision.models import (
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from local_preds_saver import LocalPredSaver
 
+# v8: centralised DINOv2/v3 loader.
+from dinov3_loader import (
+    load_dino_backbone, get_patch_tokens_at_layers,
+    validate_input_size as _validate_dino_input_size,
+    is_dino_backbone,
+    DINOV2_SPECS, DINOV3_VIT_SPECS, DINOV3_CONVNEXT_SPECS,
+    IMAGENET_MEAN as DINO_IMAGENET_MEAN,
+    IMAGENET_STD  as DINO_IMAGENET_STD,
+)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Defaults — override on the CLI
@@ -81,42 +119,84 @@ DEFAULT_DATA_ROOT  = PROJECT_ROOT / "data"
 DEFAULT_REPORT_DIR = PROJECT_ROOT / "baseline_out"
 
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff", ".webp"}
-IMAGENET_MEAN = (0.485, 0.456, 0.406)
-IMAGENET_STD  = (0.229, 0.224, 0.225)
+IMAGENET_MEAN = DINO_IMAGENET_MEAN
+IMAGENET_STD  = DINO_IMAGENET_STD
 VIEW_RE = re.compile(r"^(?P<base>.+?)_view(?P<v>\d+)\.[A-Za-z]+$")
 
-# Channel/dim per layer-or-block, by backbone.
+# ── ResNet channel tables (unchanged) ──────────────────────────────────────
 RESNET_CHANNELS = {
     "wide_resnet50_2": {1: 256, 2: 512, 3: 1024, 4: 2048},
     "resnet50":        {1: 256, 2: 512, 3: 1024, 4: 2048},
     "resnet18":        {1: 64,  2: 128, 3: 256,  4: 512},
 }
-DINOV2_DIMS = {
-    "dinov2_vits14": 384,
-    "dinov2_vitb14": 768,
-    "dinov2_vitl14": 1024,
-}
-DINOV2_NBLOCKS = {
-    "dinov2_vits14": 12,
-    "dinov2_vitb14": 12,
-    "dinov2_vitl14": 24,
-}
-RESNET_BACKBONES = set(RESNET_CHANNELS.keys())
-DINOV2_BACKBONES = set(DINOV2_DIMS.keys())
-ALL_BACKBONES    = sorted(RESNET_BACKBONES | DINOV2_BACKBONES)
 
+# ── DINOv2 + DINOv3 dim tables, built from the loader specs ────────────────
+DINOV2_DIMS    = {k: v["embed"]    for k, v in DINOV2_SPECS.items()}
+DINOV2_NBLOCKS = {k: v["n_blocks"] for k, v in DINOV2_SPECS.items()}
+DINOV3_DIMS    = {k: v["embed"]    for k, v in DINOV3_VIT_SPECS.items()}
+DINOV3_NBLOCKS = {k: v["n_blocks"] for k, v in DINOV3_VIT_SPECS.items()}
+# ConvNeXt has heterogeneous per-stage channels (4 stages, 0..3).
+DINOV3_CONVNEXT_CHANNELS = {
+    name: {i: ch for i, ch in enumerate(spec["channels"])}
+    for name, spec in DINOV3_CONVNEXT_SPECS.items()
+}
+
+RESNET_BACKBONES = set(RESNET_CHANNELS.keys())
+DINOV2_BACKBONES = set(DINOV2_SPECS.keys())          # plain + reg
+DINOV3_BACKBONES = set(DINOV3_VIT_SPECS.keys()) | set(DINOV3_CONVNEXT_SPECS.keys())
+DINO_BACKBONES   = DINOV2_BACKBONES | DINOV3_BACKBONES
+ALL_BACKBONES    = sorted(RESNET_BACKBONES | DINO_BACKBONES)
+
+# BACKBONE_CHANNELS exposes a {layer/block/stage_idx → channels} dict for
+# any supported backbone. Code that does multi-scale fusion just reads this.
 BACKBONE_CHANNELS: dict[str, dict[int, int]] = dict(RESNET_CHANNELS)
 for _bb in DINOV2_BACKBONES:
-    BACKBONE_CHANNELS[_bb] = {i: DINOV2_DIMS[_bb] for i in range(DINOV2_NBLOCKS[_bb])}
+    BACKBONE_CHANNELS[_bb] = {i: DINOV2_DIMS[_bb]
+                                for i in range(DINOV2_NBLOCKS[_bb])}
+for _bb in DINOV3_VIT_SPECS:
+    BACKBONE_CHANNELS[_bb] = {i: DINOV3_DIMS[_bb]
+                                for i in range(DINOV3_NBLOCKS[_bb])}
+for _bb, ch_dict in DINOV3_CONVNEXT_CHANNELS.items():
+    BACKBONE_CHANNELS[_bb] = ch_dict
 
 BACKBONE_SHORT = {
     "wide_resnet50_2": "wrn50",
     "resnet50":        "rn50",
     "resnet18":        "rn18",
+    # DINOv2 plain
     "dinov2_vits14":   "dnv2s14",
     "dinov2_vitb14":   "dnv2b14",
     "dinov2_vitl14":   "dnv2l14",
+    "dinov2_vitg14":   "dnv2g14",
+    # DINOv2 with registers
+    "dinov2_vits14_reg": "dnv2s14r",
+    "dinov2_vitb14_reg": "dnv2b14r",
+    "dinov2_vitl14_reg": "dnv2l14r",
+    "dinov2_vitg14_reg": "dnv2g14r",
+    # DINOv3 ViT
+    "dinov3_vits16":     "dnv3s16",
+    "dinov3_vits16plus": "dnv3sp16",
+    "dinov3_vitb16":     "dnv3b16",
+    "dinov3_vitl16":     "dnv3l16",
+    "dinov3_vith16plus": "dnv3hp16",
+    "dinov3_vit7b16":    "dnv37b16",
+    # DINOv3 ConvNeXt
+    "dinov3_convnext_tiny":  "dnv3cxt",
+    "dinov3_convnext_small": "dnv3cxs",
+    "dinov3_convnext_base":  "dnv3cxb",
+    "dinov3_convnext_large": "dnv3cxl",
 }
+
+
+def backbone_patch_size(backbone: str) -> int | None:
+    """Return effective stride to the first feature map. None for ResNet
+    (where it depends on the layer used)."""
+    if backbone in RESNET_BACKBONES: return None
+    if backbone in DINOV2_SPECS:        return DINOV2_SPECS[backbone]["patch"]
+    if backbone in DINOV3_VIT_SPECS:    return DINOV3_VIT_SPECS[backbone]["patch"]
+    if backbone in DINOV3_CONVNEXT_SPECS:
+        return DINOV3_CONVNEXT_SPECS[backbone]["patch_eff"]
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -257,14 +337,25 @@ def make_loader(records, batch_size, input_size,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Feature extractor — dual ResNet / DINOv2
+# Feature extractor — v8: tri-backbone (ResNet / DINOv2 / DINOv3)
 # ─────────────────────────────────────────────────────────────────────────────
 class FeatureExtractor(nn.Module):
-    """Dual-backbone feature extractor; see module docstring for details."""
+    """Unified feature extractor across:
+       - ResNet (wide_resnet50_2 / resnet50 / resnet18) — torchvision
+       - DINOv2 (plain or with registers)               — torch.hub
+       - DINOv3 (ViT + ConvNeXt variants)               — torch.hub local
+                                                          or HF transformers
+
+    All backbones are frozen, .eval(), and accept multi-layer feature
+    extraction via `forward(x, layers=...)` returning a dict
+    {layer_idx: (B, C, H', W')}. The `kind` attribute is exposed for
+    callers that want to specialise (multi-scale fusion logic for
+    ConvNeXt is different because stage strides differ)."""
 
     def __init__(self, backbone: str = "wide_resnet50_2"):
         super().__init__()
         self.backbone_name = backbone
+
         if backbone in RESNET_BACKBONES:
             self.kind = "resnet"
             if backbone == "wide_resnet50_2":
@@ -275,27 +366,31 @@ class FeatureExtractor(nn.Module):
                 m = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
             else:
                 raise ValueError(f"unknown resnet: {backbone}")
-            self.stem = nn.Sequential(m.conv1, m.bn1, m.relu, m.maxpool)
+            self.stem   = nn.Sequential(m.conv1, m.bn1, m.relu, m.maxpool)
             self.layer1 = m.layer1
             self.layer2 = m.layer2
             self.layer3 = m.layer3
             self.layer4 = m.layer4
-            self.dinov2 = None
+            self.dino   = None
+            self.info   = None
             self.patch_size = None
-            self.n_blocks = None
-        elif backbone in DINOV2_BACKBONES:
-            self.kind = "dinov2"
-            self.dinov2 = torch.hub.load(
-                "facebookresearch/dinov2", backbone,
-                trust_repo=True, source="github",
-            )
-            self.dinov2.eval()
-            self.patch_size = 14
-            self.n_blocks = DINOV2_NBLOCKS[backbone]
+            self.n_blocks   = None
+
+        elif backbone in DINO_BACKBONES:
+            model, info = load_dino_backbone(backbone)
+            model.eval()
+            self.dino       = model
+            self.info       = info
+            # kind reflects the DINO family for callers that need to
+            # specialise (e.g. ConvNeXt vs ViT layer indexing).
+            self.kind       = info.family
+            self.patch_size = info.patch_size
+            self.n_blocks   = info.n_blocks
             self.stem = self.layer1 = self.layer2 = None
             self.layer3 = self.layer4 = None
         else:
             raise ValueError(f"unknown backbone: {backbone}")
+
         self.eval()
         for p in self.parameters():
             p.requires_grad_(False)
@@ -305,7 +400,8 @@ class FeatureExtractor(nn.Module):
                 layers: tuple[int, ...] = (2, 3)) -> dict[int, torch.Tensor]:
         if self.kind == "resnet":
             return self._forward_resnet(x, layers)
-        return self._forward_dinov2(x, layers)
+        # DINOv2 plain/reg or DINOv3 ViT or DINOv3 ConvNeXt
+        return get_patch_tokens_at_layers(self.dino, self.info, x, layers)
 
     def _forward_resnet(self, x, layers):
         out: dict[int, torch.Tensor] = {}
@@ -318,25 +414,8 @@ class FeatureExtractor(nn.Module):
         x = self.layer3(x)
         if 3 in layers: out[3] = x
         if need_4:
-            x = self.layer4(x)
-            out[4] = x
+            x = self.layer4(x); out[4] = x
         return out
-
-    def _forward_dinov2(self, x, layers):
-        B, _, H, W = x.shape
-        if H % self.patch_size != 0 or W % self.patch_size != 0:
-            raise ValueError(
-                f"DINOv2 requires H, W divisible by {self.patch_size}; "
-                f"got ({H}, {W}).")
-        for l in layers:
-            if not (0 <= l < self.n_blocks):
-                raise ValueError(
-                    f"DINOv2 block index {l} out of range "
-                    f"[0, {self.n_blocks - 1}] for {self.backbone_name}.")
-        outs = self.dinov2.get_intermediate_layers(
-            x, n=list(layers), reshape=True, norm=True,
-        )
-        return {l: outs[i] for i, l in enumerate(layers)}
 
 
 def patchify_and_combine(maps: dict[int, torch.Tensor],
@@ -362,7 +441,7 @@ def patchify_and_combine(maps: dict[int, torch.Tensor],
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Greedy k-center coreset
+# Greedy k-center coreset (unchanged from v5/v7)
 # ─────────────────────────────────────────────────────────────────────────────
 @torch.inference_mode()
 def _project_cpu_features_to_gpu(features_cpu, device, seed,
@@ -558,40 +637,6 @@ class PatchCore:
         self.feature_hw: tuple[int, int] | None = None
         self.feature_dim: int | None = None
 
-    # @torch.inference_mode()
-    # def _extract(self, loader: DataLoader) -> torch.Tensor:
-    #     feats_list = []
-    #     n = 0
-    #     last_log = 0
-    #     for x, _, _ in loader:
-    #         bs = x.shape[0]
-    #         x = x.to(self.device, non_blocking=True)
-    #         maps = self.extractor(x, layers=self.cfg.feature_layers)
-    #         pf = patchify_and_combine(maps,
-    #                                    patch_size=self.cfg.patch_size,
-    #                                    target_layer=self.target_layer)
-    #         if self.feature_hw is None:
-    #             P = pf.shape[1]
-    #             H = W = int(math.isqrt(P))
-    #             self.feature_hw = (H, W)
-    #             self.feature_dim = pf.shape[2]
-    #         # pf = pf.reshape(-1, pf.shape[-1]).detach().cpu()
-    #         # feats_list.append(pf)
-    #         pf = pf.reshape(-1, pf.shape[-1]).detach()
-    #         if self.cfg.coreset_fp16:
-    #             pf = pf.half()
-    #         feats_list.append(pf.cpu())
-    #
-    #         del x, maps, pf
-    #         n += bs
-    #         if n - last_log >= 256:
-    #             last_log = n
-    #             print(f"      extracted features from {n} images "
-    #                   f"(feat dim={self.feature_dim}, "
-    #                   f"patches/img={self.feature_hw[0] * self.feature_hw[1]})",
-    #                   flush=True)
-    #     return torch.cat(feats_list, dim=0)
-
     @torch.inference_mode()
     def _extract(self, loader: DataLoader) -> torch.Tensor:
         feats_list = []
@@ -614,7 +659,6 @@ class PatchCore:
                 H = W = int(math.isqrt(P))
                 self.feature_hw = (H, W)
                 self.feature_dim = pf.shape[2]
-            # NEW: per-image random patch subsample (standard PatchCore feature sampling)
             if keep_frac < 1.0:
                 P_full = pf.shape[1]
                 n_keep = max(1, int(P_full * keep_frac))
@@ -693,10 +737,8 @@ class PatchCore:
               f"({self.memory.element_size() * self.memory.numel() / 1e6:.1f} "
               f"MB on GPU)")
 
-    # ── Standard single-image scoring (unchanged from v5) ───────────────────
     @torch.inference_mode()
     def _score_one_pass(self, x: torch.Tensor) -> torch.Tensor:
-        """Returns the upsampled (B, input_size, input_size) score on CPU."""
         score_lr, _ = self._compute_score_and_pf(x)
         score = F.interpolate(score_lr.unsqueeze(1),
                               size=(self.cfg.input_size, self.cfg.input_size),
@@ -711,12 +753,10 @@ class PatchCore:
             return self._score_one_pass(x)
         accumulator = None
         n = 0
-        def _add(scores: torch.Tensor):
+        def _add(scores):
             nonlocal accumulator, n
-            if accumulator is None:
-                accumulator = scores.clone()
-            else:
-                accumulator += scores
+            if accumulator is None: accumulator = scores.clone()
+            else: accumulator += scores
             n += 1
         _add(self._score_one_pass(x))
         if tta in ("hflip", "hvflip", "d4"):
@@ -726,33 +766,21 @@ class PatchCore:
             s = self._score_one_pass(torch.flip(x, dims=[-2]))
             _add(torch.flip(s, dims=[-2]))
         if tta == "d4":
-            s = self._score_one_pass(torch.rot90(x, k=1, dims=[-2, -1]))
-            _add(torch.rot90(s, k=-1, dims=[-2, -1]))
-            s = self._score_one_pass(torch.rot90(x, k=2, dims=[-2, -1]))
-            _add(torch.rot90(s, k=-2, dims=[-2, -1]))
-            s = self._score_one_pass(torch.rot90(x, k=3, dims=[-2, -1]))
-            _add(torch.rot90(s, k=-3, dims=[-2, -1]))
+            for k in (1, 2, 3):
+                s = self._score_one_pass(torch.rot90(x, k=k, dims=[-2, -1]))
+                _add(torch.rot90(s, k=-k, dims=[-2, -1]))
             xf = torch.flip(x, dims=[-1])
             s = self._score_one_pass(torch.rot90(xf, k=1, dims=[-2, -1]))
             s = torch.rot90(s, k=-1, dims=[-2, -1])
-            s = torch.flip(s, dims=[-1])
-            _add(s)
+            s = torch.flip(s, dims=[-1]); _add(s)
             xf = torch.flip(x, dims=[-2])
             s = self._score_one_pass(torch.rot90(xf, k=1, dims=[-2, -1]))
             s = torch.rot90(s, k=-1, dims=[-2, -1])
-            s = torch.flip(s, dims=[-2])
-            _add(s)
+            s = torch.flip(s, dims=[-2]); _add(s)
         return accumulator / max(n, 1)
 
-    # ── Multiview-aware scoring (v6 sibling-bank, PRESERVED) ────────────────
     @torch.inference_mode()
     def _compute_score_and_pf(self, x: torch.Tensor):
-        """Shared inner: returns (score_lr (B, H, W) on GPU,
-        pf (B, P, C) L2-normed on GPU). Used by:
-          - standard single-image score path
-          - v6 sibling-bank multiview path
-          - v7 consensus-v3 multiview path (via multiview_consensus.py)
-        """
         assert self.memory is not None, "fit() first"
         maps = self.extractor(x.to(self.device, non_blocking=True),
                               layers=self.cfg.feature_layers)
@@ -782,40 +810,22 @@ class PatchCore:
             del q, max_sim
         score_lr = dist_min.reshape(B, H, W)
         del flat, dist_min
-        # pf is already L2-normed by patchify_and_combine.
         return score_lr, pf
 
     @torch.inference_mode()
     def score_sample_with_siblings(self, x_sample: torch.Tensor,
                                      tta: str = "none",
                                      mv_alpha: float = 0.5) -> torch.Tensor:
-        """[v6 sibling-bank] All views of one sample batched together.
-
-        Kept for backward compatibility / ablation comparison. NOTE: this
-        path is known to self-suppress on anomalies visible in ≥2 views
-        (sibling bank contains the anomaly → mv_inc collapses). For
-        production, prefer `--multiview consensus-v3` which routes
-        through multiview_consensus.py.
-        """
+        """[v6 sibling-bank] All views of one sample batched together."""
         device = self.device
         x_sample = x_sample.to(device, non_blocking=True)
-
-        acc_score = None
-        acc_pf = None
-        n_acc = 0
-
+        acc_score = None; acc_pf = None; n_acc = 0
         def _add(s, pf):
             nonlocal acc_score, acc_pf, n_acc
-            if acc_score is None:
-                acc_score = s.clone()
-                acc_pf = pf.clone()
-            else:
-                acc_score += s
-                acc_pf += pf
+            if acc_score is None: acc_score = s.clone(); acc_pf = pf.clone()
+            else: acc_score += s; acc_pf += pf
             n_acc += 1
-
-        s, pf = self._compute_score_and_pf(x_sample)
-        _add(s, pf)
+        s, pf = self._compute_score_and_pf(x_sample); _add(s, pf)
 
         def _invert_pf_flip(pf2, flip_dim_in_grid):
             Bf, Pf, Cf = pf2.shape
@@ -841,20 +851,16 @@ class PatchCore:
                     torch.rot90(x_sample, k=k, dims=[-2, -1]))
                 _add(torch.rot90(s2, k=-k, dims=[-2, -1]),
                      _invert_pf_rot(pf2, k))
-
         score_lr = acc_score / n_acc
         pf = acc_pf / n_acc
         pf = F.normalize(pf, p=2, dim=-1)
-
         V, P, C = pf.shape
         H = W = int(math.isqrt(P))
-
         if V < 2:
             up = F.interpolate(score_lr.unsqueeze(1),
                                size=(self.cfg.input_size, self.cfg.input_size),
                                mode="bilinear", align_corners=False).squeeze(1)
             return up.cpu()
-
         mv_dist = torch.empty(V, P, device=device, dtype=torch.float32)
         for i in range(V):
             siblings = torch.cat([pf[j] for j in range(V) if j != i], dim=0)
@@ -862,14 +868,12 @@ class PatchCore:
             max_sim = sim.max(dim=1).values
             mv_dist[i] = 1.0 - max_sim
             del siblings, sim, max_sim
-
         mv_dist = mv_dist.reshape(V, H, W)
         sd_min = mv_dist.min(); sd_max = mv_dist.max()
         if (sd_max - sd_min) > 1e-9:
             mv_norm = (mv_dist - sd_min) / (sd_max - sd_min)
         else:
             mv_norm = torch.zeros_like(mv_dist)
-
         boost = (1.0 - mv_alpha) + mv_alpha * mv_norm
         boosted = score_lr * boost
         up = F.interpolate(boosted.unsqueeze(1),
@@ -881,9 +885,9 @@ class PatchCore:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pixel-level Average Precision
+# Pixel-level AP / smoothing / calibration / q8rle
 # ─────────────────────────────────────────────────────────────────────────────
-def pixel_average_precision(score: np.ndarray, gt: np.ndarray) -> float:
+def pixel_average_precision(score, gt):
     s = score.astype(np.float32).ravel()
     y = gt.astype(np.int32).ravel()
     if y.sum() == 0:
@@ -902,9 +906,6 @@ def pixel_average_precision(score: np.ndarray, gt: np.ndarray) -> float:
         return float(np.sum((recall[1:] - recall[:-1]) * precision[1:]))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Smoothing + calibration + q8rle
-# ─────────────────────────────────────────────────────────────────────────────
 def _gaussian_kernel_1d(sigma, radius):
     x = np.arange(-radius, radius + 1)
     k = np.exp(-(x ** 2) / (2 * sigma ** 2))
@@ -912,8 +913,7 @@ def _gaussian_kernel_1d(sigma, radius):
 
 
 def gaussian_smooth(score, sigma=1.5):
-    if sigma <= 0:
-        return score
+    if sigma <= 0: return score
     r = max(1, int(round(3 * sigma)))
     k = _gaussian_kernel_1d(sigma, r)
     sx = np.pad(score, ((r, r), (0, 0)), mode="reflect")
@@ -984,15 +984,12 @@ class RunConfig:
     smooth_sigma: float = 1.5
     knn_k: int = 9
     tta: str = "none"
-    # v6: sibling-bank multiview
     multiview: str = "none"          # "none" | "sibling-bank" | "consensus-v3"
     mv_alpha: float = 0.5
-    # v7: consensus-v3 hyperparameters
     mv_beta: float = 0.4
     good_keep_frac: float = 0.7
     agreement_pct: float = 95.0
     agreement_thresh: float = 0.90
-    # bookkeeping
     seed: int = 0
     train_patch_keep: float = 1.0
     only_classes: list[str] = field(default_factory=list)
@@ -1025,9 +1022,8 @@ def make_run_id(cfg: RunConfig) -> str:
         "multiview": cfg.multiview,
         "mv_alpha": cfg.mv_alpha if cfg.multiview != "none" else 0,
         "seed": cfg.seed,
-        "v": 7,
+        "v": 8,
     }
-    # Only fold consensus-v3 hyperparams into the hash when they matter.
     if cfg.multiview == "consensus-v3":
         fp_dict.update({
             "mv_beta": cfg.mv_beta,
@@ -1038,7 +1034,7 @@ def make_run_id(cfg: RunConfig) -> str:
     fp = json.dumps(fp_dict, sort_keys=True).encode("utf-8")
     digest = hashlib.sha1(fp).hexdigest()[:6]
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    bb = BACKBONE_SHORT[cfg.backbone]
+    bb = BACKBONE_SHORT.get(cfg.backbone, cfg.backbone)
     if cfg.backbone in RESNET_BACKBONES:
         L = "".join(str(l) for l in cfg.feature_layers)
     else:
@@ -1093,8 +1089,7 @@ def _build_transform_pc(input_size: int):
     ])
 
 
-def _load_one_pc(r: ImageRecord, transform, load_masks: bool,
-                  input_size: int):
+def _load_one_pc(r: ImageRecord, transform, load_masks: bool, input_size: int):
     with Image.open(r.path) as im:
         x = transform(im.convert("RGB"))
     if load_masks and r.mask_path is not None:
@@ -1107,11 +1102,8 @@ def _load_one_pc(r: ImageRecord, transform, load_masks: bool,
     return x, m
 
 
-def _score_records_standard_pc(pc: PatchCore, records: list[ImageRecord],
-                                cfg: RunConfig, load_masks: bool
-                                ) -> tuple[dict, dict]:
-    """Vanilla per-image scoring (uses pc.score_batch with TTA).
-    Returns (idx -> raw_score_map, idx -> gt_mask)."""
+def _score_records_standard_pc(pc: PatchCore, records, cfg: RunConfig,
+                                 load_masks: bool):
     loader = make_loader(records, batch_size=cfg.score_batch_size,
                          input_size=cfg.input_size,
                          num_workers=cfg.num_workers,
@@ -1135,24 +1127,19 @@ def _score_records_standard_pc(pc: PatchCore, records: list[ImageRecord],
     return scores, gts
 
 
-def _score_records_by_sample_pc(pc: PatchCore, records: list[ImageRecord],
-                                 cfg: RunConfig, load_masks: bool
-                                 ) -> tuple[dict, dict]:
-    """[v6 sibling-bank] Group by sample_id, score all views together via
-    pc.score_sample_with_siblings."""
+def _score_records_by_sample_pc(pc: PatchCore, records, cfg: RunConfig,
+                                 load_masks: bool):
     by_sample: dict[str, list[tuple[int, ImageRecord]]] = defaultdict(list)
     for idx, r in enumerate(records):
         sid = r.sample_id or r.path.stem
         by_sample[sid].append((idx, r))
     print(f"      grouped {len(records)} images into {len(by_sample)} samples")
-
     transform = _build_transform_pc(cfg.input_size)
     scores: dict[int, np.ndarray] = {}
     gts: dict[int, np.ndarray] = {}
     n_done = 0; last_log = 0
     for sid, items in by_sample.items():
-        imgs: list[torch.Tensor] = []
-        masks_np: list[np.ndarray] = []
+        imgs = []; masks_np = []
         for _idx, r in items:
             x, m = _load_one_pc(r, transform, load_masks, cfg.input_size)
             imgs.append(x); masks_np.append(m)
@@ -1177,12 +1164,8 @@ def _score_records_by_sample_pc(pc: PatchCore, records: list[ImageRecord],
 def run_one_class(cls: str, records_all: list[ImageRecord],
                    cfg: RunConfig, run_dir: Path,
                    local_saver: "LocalPredSaver | None" = None) -> dict:
-    """If `local_saver` is given, every local-val (score_map, gt_mask)
-    pair is appended to it so the stacker can train on the raw pixel
-    predictions later."""
     hr(f"CLASS {cls}", "─")
     t_start = time.time()
-
     train_good = [r for r in records_all if r.cls == cls and r.split == "train_good"]
     train_anom = [r for r in records_all if r.cls == cls and r.split == "train_anomaly"]
     test       = [r for r in records_all if r.cls == cls and r.split == "test"]
@@ -1190,29 +1173,21 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
           f"train_anomaly={len(train_anom)}  test={len(test)}")
 
     pc_cfg = PatchCoreConfig(
-        backbone=cfg.backbone,
-        feature_layers=cfg.feature_layers,
-        target_layer=cfg.target_layer,
-        input_size=cfg.input_size,
-        coreset_frac=cfg.coreset_frac,
-        coreset_fp16=cfg.coreset_fp16,
-        coreset_algo=cfg.coreset_algo,
-        coreset_batch=cfg.coreset_batch,
-        knn_k=cfg.knn_k,
-        batch_size=cfg.batch_size,
+        backbone=cfg.backbone, feature_layers=cfg.feature_layers,
+        target_layer=cfg.target_layer, input_size=cfg.input_size,
+        coreset_frac=cfg.coreset_frac, coreset_fp16=cfg.coreset_fp16,
+        coreset_algo=cfg.coreset_algo, coreset_batch=cfg.coreset_batch,
+        knn_k=cfg.knn_k, batch_size=cfg.batch_size,
         score_batch_size=cfg.score_batch_size,
-        score_chunk=cfg.score_chunk,
-        memory_chunk=cfg.memory_chunk,
-        memory_dtype=cfg.memory_dtype,
-        project_chunk=cfg.project_chunk,
-        num_workers=cfg.num_workers,
-        seed=cfg.seed,
+        score_chunk=cfg.score_chunk, memory_chunk=cfg.memory_chunk,
+        memory_dtype=cfg.memory_dtype, project_chunk=cfg.project_chunk,
+        num_workers=cfg.num_workers, seed=cfg.seed,
         train_patch_keep=cfg.train_patch_keep,
     )
     pc = PatchCore(pc_cfg)
     pc.fit(train_good)
 
-    # ── v7: fit per-view rank-norm LUTs if consensus-v3 ─────────────────────
+    # consensus-v3 hook (unchanged — delegates to multiview_consensus.py)
     view_luts: dict[int, np.ndarray] = {}
     if cfg.multiview == "consensus-v3":
         from multiview_consensus import fit_per_view_norm
@@ -1238,7 +1213,6 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
                     "config": asdict(pc_cfg)}, bank_path)
         print(f"    saved memory bank -> {bank_path}")
 
-    # Pick scoring function: vanilla / v6 sibling-bank / v7 consensus-v3.
     if cfg.multiview == "consensus-v3":
         from multiview_consensus import score_records_by_sample_consensus
         def score_fn(_pc, records, _cfg, load_masks):
@@ -1266,22 +1240,16 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
         for r_idx, sm_raw in scores_raw.items():
             scores_per_idx[r_idx] = gaussian_smooth(sm_raw, cfg.smooth_sigma)
             gt_per_idx[r_idx] = gts[r_idx]
-
         by_anom: dict[str, list[float]] = defaultdict(list)
         for r_idx, sm in scores_per_idx.items():
             r = train_anom[r_idx]
             ap = pixel_average_precision(sm, gt_per_idx[r_idx])
             by_anom[r.anomaly_type or "?"].append(ap)
-            # Stacker hook: smoothed per-pixel map + GT mask.
             if local_saver is not None:
                 local_saver.add(
-                    cls=cls,
-                    anomaly_type=r.anomaly_type or "unknown",
-                    view_idx=int(r_idx),
-                    score_map=sm,
-                    gt_mask=gt_per_idx[r_idx],
-                    image_path=r.path,
-                )
+                    cls=cls, anomaly_type=r.anomaly_type or "unknown",
+                    view_idx=int(r_idx), score_map=sm,
+                    gt_mask=gt_per_idx[r_idx], image_path=r.path)
         print(f"    {'anomaly_type':<14} {'n_views':>8} "
               f"{'pixel-AP (mean ± std)':>26}")
         per_type_means = []
@@ -1318,21 +1286,16 @@ def run_one_class(cls: str, records_all: list[ImageRecord],
     print(f"  class {cls} done in {elapsed_min:.1f} min")
     del pc
     if torch.cuda.is_available(): torch.cuda.empty_cache()
-    return {
-        "class": cls,
-        "class_mean_ap": class_mean_ap,
-        "eval_rows": eval_rows,
-        "test_results": test_results,
-        "elapsed_min": elapsed_min,
-    }
+    return {"class": cls, "class_mean_ap": class_mean_ap,
+            "eval_rows": eval_rows, "test_results": test_results,
+            "elapsed_min": elapsed_min}
 
 
 def write_submission(all_test_results, run_dir: Path,
                      zip_it: bool = True) -> Path:
     sub("calibrating scores and writing submission.csv")
     scores = [sm for _, sm in all_test_results]
-    if not scores:
-        raise RuntimeError("no test scores")
+    if not scores: raise RuntimeError("no test scores")
     lo, hi = calibrate_to_unit(scores)
     print(f"    global score calibration  lo={lo:.4f}  hi={hi:.4f}")
     csv_path = run_dir / "submission.csv"
@@ -1372,11 +1335,7 @@ def main():
     ap.add_argument("--input-size", type=int, default=224)
     ap.add_argument("--coreset-frac", type=float, default=0.10)
     ap.add_argument("--coreset-fp16", action="store_true")
-    ap.add_argument("--train-patch-keep", type=float, default=1.0,
-                    help="Fraction of patches kept per training image before "
-                         "coreset (default: 1.0 = keep all). Standard PatchCore "
-                         "uses 0.10–0.25. Saves CPU RAM and speeds up coreset "
-                         "with negligible AP impact.")
+    ap.add_argument("--train-patch-keep", type=float, default=1.0)
     ap.add_argument("--coreset-algo", default="minibatch",
                     choices=["exact", "minibatch"])
     ap.add_argument("--coreset-batch", type=int, default=64)
@@ -1393,33 +1352,12 @@ def main():
     ap.add_argument("--tta", default="none",
                     choices=["none", "hflip", "vflip", "hvflip", "d4"])
     ap.add_argument("--multiview", default="none",
-                    choices=["none", "sibling-bank", "consensus-v3"],
-                    help="`sibling-bank` (v6): at scoring time, batch all "
-                         "views of a sample and use the OTHER views' patch "
-                         "features as a per-sample memory bank that boosts "
-                         "view-inconsistent pixels. NOTE: this path "
-                         "self-suppresses on anomalies visible in >=2 "
-                         "views. `consensus-v3` (v7): per-view rank-norm + "
-                         "good-filtered sibling bank + agreement-only "
-                         "boost, all delegated to multiview_consensus.py.")
-    ap.add_argument("--mv-alpha", type=float, default=0.5,
-                    help="(both multiview modes) blend weight in [0, 1]. "
-                         "For consensus-v3: weight of the good-filtered "
-                         "sibling additive refinement. 0 disables (D).")
-    ap.add_argument("--mv-beta", type=float, default=0.4,
-                    help="(consensus-v3) max per-sample agreement boost. "
-                         "Final score <= refined * (1 + beta). 0 disables (A).")
-    ap.add_argument("--good-keep-frac", type=float, default=0.7,
-                    help="(consensus-v3) fraction of lowest-score sibling "
-                         "patches kept as 'good' for the filtered sibling "
-                         "bank. Smaller = stricter filter, more aggressive "
-                         "boost on multi-view-visible anomalies.")
-    ap.add_argument("--agreement-pct", type=float, default=95.0,
-                    help="(consensus-v3) percentile of each refined map "
-                         "used as that view's anomaly intensity.")
-    ap.add_argument("--agreement-thresh", type=float, default=0.90,
-                    help="(consensus-v3) rank-norm threshold above which "
-                         "a view is said to agree the sample is anomalous.")
+                    choices=["none", "sibling-bank", "consensus-v3"])
+    ap.add_argument("--mv-alpha", type=float, default=0.5)
+    ap.add_argument("--mv-beta", type=float, default=0.4)
+    ap.add_argument("--good-keep-frac", type=float, default=0.7)
+    ap.add_argument("--agreement-pct", type=float, default=95.0)
+    ap.add_argument("--agreement-thresh", type=float, default=0.90)
     ap.add_argument("--aggressive-cleanup", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--only-classes", nargs="*", default=[])
@@ -1427,9 +1365,7 @@ def main():
     ap.add_argument("--skip-submission", action="store_true")
     ap.add_argument("--no-save-banks", action="store_true")
     ap.add_argument("--no-zip", action="store_true")
-    ap.add_argument("--no-save-local-preds", action="store_true",
-                    help="Disable saving local_predictions.npz "
-                         "(default: save).")
+    ap.add_argument("--no-save-local-preds", action="store_true")
     ap.add_argument("--run-tag", default="")
     args = ap.parse_args()
 
@@ -1437,17 +1373,25 @@ def main():
     target_layer = resolve_target_layer(feature_layers, args.target_layer,
                                           args.backbone)
 
-    if args.backbone in DINOV2_BACKBONES:
-        if args.input_size % 14 != 0:
+    # v8: unified patch-size sanity for all DINO families
+    if args.backbone in DINO_BACKBONES:
+        ps = backbone_patch_size(args.backbone)
+        if ps and (args.input_size % ps != 0):
             raise SystemExit(
-                f"[FATAL] DINOv2 requires --input-size divisible by 14; "
-                f"got {args.input_size}. Try 392 or 518.")
-        nb = DINOV2_NBLOCKS[args.backbone]
+                f"[FATAL] {args.backbone} requires --input-size divisible "
+                f"by {ps}; got {args.input_size}.")
+        # ViT block bounds
+        if args.backbone in DINOV2_BACKBONES:
+            nb = DINOV2_NBLOCKS[args.backbone]
+        elif args.backbone in DINOV3_VIT_SPECS:
+            nb = DINOV3_NBLOCKS[args.backbone]
+        else:
+            nb = 4  # ConvNeXt stages
         bad = [l for l in feature_layers if not (0 <= l < nb)]
         if bad:
             raise SystemExit(
-                f"[FATAL] DINOv2 block indices out of range "
-                f"[0, {nb - 1}]: {bad}.")
+                f"[FATAL] block/stage indices out of range "
+                f"[0, {nb - 1}] for {args.backbone}: {bad}.")
 
     if not (0.0 <= args.mv_alpha <= 1.0):
         raise SystemExit(f"[FATAL] --mv-alpha must be in [0, 1]; "
@@ -1466,26 +1410,17 @@ def main():
 
     cfg = RunConfig(
         data_root=args.data_root, report_dir=args.report_dir,
-        backbone=args.backbone,
-        feature_layers=feature_layers,
-        target_layer=target_layer,
-        input_size=args.input_size,
-        coreset_frac=args.coreset_frac,
-        coreset_fp16=args.coreset_fp16,
-        coreset_algo=args.coreset_algo,
-        coreset_batch=args.coreset_batch,
-        batch_size=args.batch_size,
-        score_batch_size=args.score_batch_size,
-        score_chunk=args.score_chunk,
-        memory_chunk=args.memory_chunk,
-        memory_dtype=args.memory_dtype,
-        project_chunk=args.project_chunk,
+        backbone=args.backbone, feature_layers=feature_layers,
+        target_layer=target_layer, input_size=args.input_size,
+        coreset_frac=args.coreset_frac, coreset_fp16=args.coreset_fp16,
+        coreset_algo=args.coreset_algo, coreset_batch=args.coreset_batch,
+        batch_size=args.batch_size, score_batch_size=args.score_batch_size,
+        score_chunk=args.score_chunk, memory_chunk=args.memory_chunk,
+        memory_dtype=args.memory_dtype, project_chunk=args.project_chunk,
         num_workers=args.num_workers,
-        smooth_sigma=args.smooth_sigma, knn_k=args.knn_k,
-        tta=args.tta,
+        smooth_sigma=args.smooth_sigma, knn_k=args.knn_k, tta=args.tta,
         multiview=args.multiview, mv_alpha=args.mv_alpha,
-        mv_beta=args.mv_beta,
-        good_keep_frac=args.good_keep_frac,
+        mv_beta=args.mv_beta, good_keep_frac=args.good_keep_frac,
         agreement_pct=args.agreement_pct,
         agreement_thresh=args.agreement_thresh,
         seed=args.seed, only_classes=args.only_classes,
@@ -1502,49 +1437,34 @@ def main():
     run_dir.mkdir(parents=True, exist_ok=True)
 
     with tee_to(run_dir / "run_log.txt"):
-        hr(f"PATCHCORE v7 (DINOv2+consensus-v3) — RUN {run_id}", "█")
+        hr(f"PATCHCORE v8 (DINOv2/v3) — RUN {run_id}", "█")
         print(f"  data_root        : {cfg.data_root}")
-        print(f"  report_dir       : {cfg.report_dir}")
         print(f"  run_dir          : {run_dir}")
-        print(f"  backbone         : {cfg.backbone}  "
-              f"(kind={'DINOv2' if cfg.backbone in DINOV2_BACKBONES else 'ResNet'})")
+        print(f"  backbone         : {cfg.backbone}")
+        if cfg.backbone in DINO_BACKBONES:
+            ps = backbone_patch_size(cfg.backbone)
+            family = ("DINOv3-ConvNeXt" if cfg.backbone in DINOV3_CONVNEXT_SPECS
+                       else "DINOv3" if cfg.backbone in DINOV3_VIT_SPECS
+                       else "DINOv2-reg" if cfg.backbone.endswith("_reg")
+                       else "DINOv2")
+            print(f"  family / patch   : {family} / {ps}")
+        else:
+            print(f"  family / patch   : ResNet")
         print(f"  feature_layers   : {list(cfg.feature_layers)}")
         print(f"  target_layer     : {cfg.target_layer}")
-        print(f"  input_size       : {cfg.input_size}"
-              + (f"  (tokens: {cfg.input_size // 14}x{cfg.input_size // 14})"
-                 if cfg.backbone in DINOV2_BACKBONES else ""))
-        print(f"  coreset_frac     : {cfg.coreset_frac:.1%}   "
-              f"coreset_fp16={cfg.coreset_fp16}   knn_k={cfg.knn_k}")
+        print(f"  input_size       : {cfg.input_size}")
+        print(f"  coreset_frac     : {cfg.coreset_frac:.1%}  "
+              f"coreset_fp16={cfg.coreset_fp16}  knn_k={cfg.knn_k}")
         print(f"  coreset_algo     : {cfg.coreset_algo}"
               + (f"  (batch={cfg.coreset_batch})"
                  if cfg.coreset_algo == "minibatch" else ""))
         print(f"  memory_dtype     : {cfg.memory_dtype}")
-        print(f"  batch_size (fit) : {cfg.batch_size}")
-        print(f"  score_batch_size : {cfg.score_batch_size}")
-        print(f"  score_chunk      : {cfg.score_chunk}")
-        print(f"  memory_chunk     : {cfg.memory_chunk}")
-        print(f"  project_chunk    : {cfg.project_chunk}")
-        print(f"  smooth_sigma     : {cfg.smooth_sigma}")
         print(f"  tta              : {cfg.tta}")
         print(f"  multiview        : {cfg.multiview}")
-        if cfg.multiview == "sibling-bank":
-            print(f"                     alpha={cfg.mv_alpha}")
-        elif cfg.multiview == "consensus-v3":
-            print(f"                     alpha={cfg.mv_alpha} (D) "
-                  f"beta={cfg.mv_beta} (A)")
-            print(f"                     good_keep_frac={cfg.good_keep_frac}")
-            print(f"                     agreement_pct={cfg.agreement_pct} "
-                  f"agreement_thresh={cfg.agreement_thresh}")
-        print(f"  save_banks       : {cfg.save_memory_banks}")
-        print(f"  save_local_preds : {not args.no_save_local_preds}")
-        print(f"  aggressive_clean : {cfg.aggressive_cleanup}")
         print(f"  device           : {'cuda' if torch.cuda.is_available() else 'cpu'}")
         if torch.cuda.is_available():
             print(f"                    {torch.cuda.get_device_name(0)}, "
                   f"{torch.cuda.get_device_properties(0).total_memory/1e9:.1f} GB")
-        ch_per_layer = sum(BACKBONE_CHANNELS[cfg.backbone][l]
-                            for l in cfg.feature_layers)
-        print(f"  expected fused feature dim : {ch_per_layer}")
 
         with open(run_dir / "config.json", "w") as f:
             json.dump({k: (list(v) if isinstance(v, tuple) else
@@ -1599,6 +1519,7 @@ def main():
 
         if not cfg.skip_submission and all_test_results:
             hr("SUBMISSION", "=")
+            save_test_predictions(all_test_results, run_dir)
             write_submission(all_test_results, run_dir,
                               zip_it=cfg.zip_submission)
             print(f"\n  Upload to the Kaggle leaderboard:\n"
@@ -1608,15 +1529,13 @@ def main():
         if cfg.multiview == "sibling-bank":
             notes = f"multiview=sibling-bank mv_alpha={cfg.mv_alpha}"
         elif cfg.multiview == "consensus-v3":
-            notes = (f"multiview=consensus-v3 "
-                     f"alpha={cfg.mv_alpha} beta={cfg.mv_beta} "
-                     f"keep={cfg.good_keep_frac} "
+            notes = (f"multiview=consensus-v3 alpha={cfg.mv_alpha} "
+                     f"beta={cfg.mv_beta} keep={cfg.good_keep_frac} "
                      f"pct={cfg.agreement_pct} thr={cfg.agreement_thresh}")
         else:
             notes = ""
         row = {
-            "run_id": run_id,
-            "run_tag": cfg.run_tag,
+            "run_id": run_id, "run_tag": cfg.run_tag,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "backbone": cfg.backbone,
             "feature_layers": "+".join(str(l) for l in cfg.feature_layers),
@@ -1627,17 +1546,14 @@ def main():
             "coreset_algo": cfg.coreset_algo,
             "coreset_batch": cfg.coreset_batch,
             "patch_size": 3,
-            "knn_k": cfg.knn_k,
-            "smooth_sigma": cfg.smooth_sigma,
-            "tta": cfg.tta,
-            "memory_dtype": cfg.memory_dtype,
+            "knn_k": cfg.knn_k, "smooth_sigma": cfg.smooth_sigma,
+            "tta": cfg.tta, "memory_dtype": cfg.memory_dtype,
             "batch_size": cfg.batch_size,
             "score_batch_size": cfg.score_batch_size,
             "score_chunk": cfg.score_chunk,
             "memory_chunk": cfg.memory_chunk,
             "project_chunk": cfg.project_chunk,
-            "seed": cfg.seed,
-            "n_classes": len(classes),
+            "seed": cfg.seed, "n_classes": len(classes),
             **{f"AP_{c}": f"{class_aps.get(c, float('nan')):.4f}"
                 for c in sorted(class_aps)},
             "AP_overall": f"{overall_ap:.4f}",
@@ -1648,7 +1564,6 @@ def main():
         }
         append_to_ablation_master(master_csv, row)
         print(f"\n  ablation row appended -> {master_csv}")
-
         hr(f"DONE — run_id={run_id}", "█")
 
 

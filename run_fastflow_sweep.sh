@@ -4,27 +4,24 @@
 # Three variants:
 #   exp15   : WRN50-2 multi-scale (layers 1+2+3), 8 flow blocks per scale,
 #             hidden_ratio=1.0, clamp=2.0. FastFlow paper default.
-#   exp15b  : WRN50-2, 12 flow blocks, hidden_ratio=2.0. More capacity —
-#             tests whether the paper default is bottlenecked on
-#             Spacepresso's relatively complex feature distributions.
-#   exp15c  : DINOv2 ViT-S/14, blocks 3+6+9+11, 8 flow blocks. Strong
-#             features + density estimation; should be the best variant
-#             on textured classes (coffee, pistachio).
+#   exp15b  : WRN50-2, 12 flow blocks, hidden_ratio=2.0. More capacity.
+#   exp15c  : DINOv2 ViT-B/14 reg, blocks 3+6+9+11, 8 flow blocks.
+#             Same backbone family as the rest of the dnv2reg sweep.
 #
 # Total walltime estimate on a single NVIDIA L4 (24 GB):
 #   exp15   ~55 min (8 classes)
-#   exp15b  ~80 min  (12 blocks instead of 8, 2x hidden)
-#   exp15c  ~75 min  (DINOv2 forward is slower)
-#   Sweep total: ~3.5 hours.
+#   exp15b  ~80 min
+#   exp15c  ~110 min (ViT-B fwd is ~2x ViT-S, flow params 4x at
+#                    768-channel inputs)
 #
 # AMP NOTE:
 #   --amp-flow is OFF by default (and intentionally not added below).
 #   Flow forward + backward through exp/log produces NaNs in fp16
-#   early in training. The backbone forward is still in AMP (controlled
-#   by the default --amp=True), so we get the speedup where it's safe.
+#   early in training. The backbone forward is still in AMP, so the
+#   speedup is preserved where it's safe.
 
 set -euo pipefail
-# hello
+
 DATA=/workspace/anomaly-detection/data
 OUT=/workspace/anomaly-detection/baseline_out
 
@@ -78,34 +75,38 @@ OUT=/workspace/anomaly-detection/baseline_out
 #    --seed 0 \
 #    --run-tag "exp15b-fastflow-wrn50-b12h2"
 
-# ── EXPERIMENT 15c — DINOv2 variant ─────────────────────────────────────────
+# ── EXPERIMENT 15c — DINOv2 ViT-B/14 reg variant ────────────────────────────
+# Channel dim per scale = 768 (ViT-B) vs 384 (ViT-S). Flow params
+# scale ~quadratically in channel dim at hr=1.0, so batch must drop.
+# batch=4 / score=2 fits at input 518 on a 24 GB L4 with headroom.
+# Bump batch to 6 if you've got an A100/H100 to play with.
 echo "================================================================"
-echo "EXPERIMENT 15c — FastFlow @ DINOv2 ViT-S/14, blocks 3+6+9+11"
+echo "EXPERIMENT 15c — FastFlow @ DINOv2 ViT-B/14 reg, blocks 3+6+9+11"
 echo "================================================================"
 
 uv run python fastflow_baseline.py \
     --data-root  "$DATA" \
     --report-dir "$OUT" \
-    --backbone dinov2_vits14 \
+    --backbone dinov2_vitb14_reg \
     --feature-layers 3 6 9 11 \
     --input-size 518 \
     --n-flow-blocks 8 \
     --hidden-ratio 1.0 \
     --clamp 2.0 \
     --total-iters 2500 \
-    --batch-size 8 \
+    --batch-size 4 \
     --lr 1e-3 \
     --weight-decay 1e-5 \
-    --score-batch-size 4 \
+    --score-batch-size 2 \
     --smooth-sigma 1.5 \
     --tta hvflip \
     --num-workers 8 \
     --seed 0 \
-    --run-tag "exp15c-fastflow-dnv2s14-b8h1"
+    --run-tag "exp15c-fastflow-dnv2b14reg-b8h1"
 
 echo
 echo "================================================================"
-echo "DONE — three rows appended to $OUT/ablation_master.csv"
+echo "DONE — rows appended to $OUT/ablation_master.csv"
 echo
 echo "To add the best FastFlow run to the XGBoost stacker, append the"
 echo "winning run directory to COMMON_ARGS in stack.sh:"
