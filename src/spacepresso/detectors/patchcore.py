@@ -17,11 +17,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import ClassVar
 
 import torch
-import torch.nn.functional as F
 
 from spacepresso.backbones import (
     build_backbone,
@@ -30,11 +29,11 @@ from spacepresso.backbones import (
     short_tag,
     validate_input_size,
 )
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.logging import now_hms
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.coreset import MemoryBank, greedy_coreset
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["PatchCore", "PatchCoreConfig"]
 
@@ -195,7 +194,7 @@ class PatchCore(Detector[PatchCoreConfig]):
             patches = self._patch_features(images)
 
             if self.grid is None:
-                side = int(math.isqrt(patches.shape[1]))
+                side = math.isqrt(patches.shape[1])
                 self.grid = (side, side)
 
             if keep < 1.0:
@@ -238,7 +237,7 @@ class PatchCore(Detector[PatchCoreConfig]):
 
         patches = self._patch_features(images)
         batch, n_patches, channels = patches.shape
-        side = int(math.isqrt(n_patches))
+        side = math.isqrt(n_patches)
 
         distances = self.bank.distance(
             patches.reshape(-1, channels),

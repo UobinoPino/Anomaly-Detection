@@ -108,18 +108,29 @@ class LogisticEstimator(Estimator):
         from sklearn.preprocessing import StandardScaler
 
         params = dict(self.params)
-        l1_ratio = params.get("l1_ratio")
-        # saga is the only solver supporting elasticnet; lbfgs is faster for
-        # the pure-L2 case, so the solver follows the penalty rather than
-        # being a separate knob the caller has to keep consistent.
-        if params.get("penalty") == "elasticnet" or (
-            l1_ratio is not None and 0.0 < float(l1_ratio) < 1.0
-        ):
-            params.setdefault("penalty", "elasticnet")
+        l1_ratio = float(params.pop("l1_ratio", 0.0) or 0.0)
+
+        # scikit-learn 1.8 deprecates `penalty` in favour of `l1_ratio`
+        # alone, so which keyword to pass depends on the installed version.
+        # The semantics are the same either way: 0 is pure L2, 1 is pure L1.
+        import inspect
+
+        from sklearn.linear_model import LogisticRegression as _LR
+
+        signature = inspect.signature(_LR.__init__).parameters
+        penalty_deprecated = "penalty" not in signature or (
+            signature["penalty"].default in (None, "deprecated")
+        )
+
+        if penalty_deprecated:
+            params["l1_ratio"] = l1_ratio
+            params["solver"] = "saga" if l1_ratio > 0 else "lbfgs"
+        elif l1_ratio > 0:
+            params["penalty"] = "elasticnet"
+            params["l1_ratio"] = l1_ratio
             params["solver"] = "saga"
         else:
-            params.pop("l1_ratio", None)
-            params.setdefault("penalty", "l2")
+            params["penalty"] = "l2"
             params["solver"] = "lbfgs"
 
         params.setdefault("max_iter", 1000)
@@ -196,7 +207,9 @@ def suggest_params(name: EstimatorName, trial: Any) -> dict[str, Any]:
             "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
             "subsample": trial.suggest_float("subsample", 0.5, 1.0),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
-            "min_child_weight": trial.suggest_float("min_child_weight", 1.0, 50.0, log=True),
+            "min_child_weight": trial.suggest_float(
+                "min_child_weight", 1.0, 50.0, log=True
+            ),
             "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 50.0, log=True),
         }
     return {

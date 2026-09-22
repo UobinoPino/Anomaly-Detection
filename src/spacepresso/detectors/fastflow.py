@@ -25,10 +25,10 @@ import torch.nn.functional as F
 from torch import nn
 
 from spacepresso.backbones import build_backbone, short_tag, validate_input_size
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.training import train_loop
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["FastFlow", "FastFlowConfig"]
 
@@ -182,9 +182,7 @@ class MultiScaleFlow(nn.Module):
     def forward(
         self, features: dict[int, torch.Tensor]
     ) -> dict[int, tuple[torch.Tensor, torch.Tensor]]:
-        return {
-            scale: self.flows[str(scale)](features[scale]) for scale in self.scales
-        }
+        return {scale: self.flows[str(scale)](features[scale]) for scale in self.scales}
 
 
 def nll_per_pixel(z: torch.Tensor, log_det: torch.Tensor) -> torch.Tensor:
@@ -224,7 +222,9 @@ class FastFlow(Detector[FastFlowConfig]):
         tensors the flow can train through.
         """
         maps = self.backbone(images, layers=self.config.feature_layers)
-        return {layer: maps[layer].float().clone() for layer in self.config.feature_layers}
+        return {
+            layer: maps[layer].float().clone() for layer in self.config.feature_layers
+        }
 
     # ── fit ──────────────────────────────────────────────────────────────
     def fit(self, train_good: Sequence[ImageRecord]) -> None:
@@ -308,7 +308,10 @@ class FastFlow(Detector[FastFlowConfig]):
             nll = nll_per_pixel(z, log_det).float()
             nll = (nll - self.stats[scale]["mean"]) / self.stats[scale]["std"]
             upsampled = F.interpolate(
-                nll.unsqueeze(1), size=(size, size), mode="bilinear", align_corners=False
+                nll.unsqueeze(1),
+                size=(size, size),
+                mode="bilinear",
+                align_corners=False,
             ).squeeze(1)
             total = upsampled if total is None else total + upsampled
 
@@ -317,8 +320,7 @@ class FastFlow(Detector[FastFlowConfig]):
 
     def release(self) -> None:
         channels = {
-            layer: self.backbone.channels(layer)
-            for layer in self.config.feature_layers
+            layer: self.backbone.channels(layer) for layer in self.config.feature_layers
         }
         self.flow = MultiScaleFlow(
             channels, self.config.n_blocks, self.config.hidden_ratio, self.config.clamp

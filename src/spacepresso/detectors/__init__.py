@@ -23,8 +23,8 @@ from __future__ import annotations
 import importlib
 from collections.abc import Iterator
 
+from spacepresso.config import DetectorConfig
 from spacepresso.detectors.base import Detector, ScoreMap, ScoreMaps
-from spacepresso.runner.config import DetectorConfig
 
 __all__ = [
     "Detector",
@@ -53,6 +53,8 @@ _REGISTRY: dict[str, tuple[str, str, str]] = {
     "dino_dpmm": ("dino_dpmm", "DinoDPMM", "DinoDPMMConfig"),
     "anomalydino": ("anomalydino", "AnomalyDINO", "AnomalyDINOConfig"),
     "winclip": ("winclip", "WinCLIP", "WinCLIPConfig"),
+    "transfusion": ("transfusion", "TransFusion", "TransFusionConfig"),
+    "textad": ("textad", "TextAD", "TextADConfig"),
 }
 
 

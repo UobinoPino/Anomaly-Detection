@@ -166,7 +166,7 @@ def load_spatial_priors(
             continue
         try:
             heat = np.clip(np.load(path).astype(np.float32), 0.0, 1.0)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("could not load %s: %s; using a zero prior", path, exc)
             priors[cls] = fallback
             continue

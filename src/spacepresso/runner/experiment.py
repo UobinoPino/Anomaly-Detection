@@ -37,6 +37,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.imaging import gaussian_smooth, resize_to_submission
 from spacepresso.core.logging import (
     log_section,
@@ -59,7 +60,6 @@ from spacepresso.core.submission import ScoredRecord, write_submission
 from spacepresso.core.tracking import append_to_master, make_run_id
 from spacepresso.data.transforms import load_mask
 from spacepresso.detectors.base import Detector, ScoreMaps
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["ClassResult", "RunResult", "run_experiment"]
 
@@ -255,9 +255,7 @@ def run_experiment(
         )
 
     probe = make_detector(config, runtime)
-    run_id = make_run_id(
-        probe.slug(), probe.fingerprint(), run_tag=runtime.run_tag
-    )
+    run_id = make_run_id(probe.slug(), probe.fingerprint(), run_tag=runtime.run_tag)
     detector_name = probe.name
     del probe
 
@@ -332,7 +330,9 @@ def run_experiment(
         log_section(logger, f"DONE — run_id={run_id}", "█")
 
     pooled = float(
-        np.mean([r.pooled_ap for r in results if not math.isnan(r.pooled_ap)] or [np.nan])
+        np.mean(
+            [r.pooled_ap for r in results if not math.isnan(r.pooled_ap)] or [np.nan]
+        )
     )
     return RunResult(
         run_id=run_id,
@@ -398,7 +398,15 @@ def _write_eval_csv(run_dir: Path, results: Sequence[ClassResult]) -> None:
     rows = [row for result in results for row in result.eval_rows]
     if not rows:
         return
-    columns = ["class", "anomaly_type", "n_views", "ap_mean", "ap_std", "ap_min", "ap_max"]
+    columns = [
+        "class",
+        "anomaly_type",
+        "n_views",
+        "ap_mean",
+        "ap_std",
+        "ap_min",
+        "ap_max",
+    ]
     path = run_dir / "local_eval.csv"
     with open(path, "w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=columns)

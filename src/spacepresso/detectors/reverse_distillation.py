@@ -36,10 +36,10 @@ from spacepresso.backbones import (
     short_tag,
     validate_input_size,
 )
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.training import train_loop
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["ReverseDistillation", "ReverseDistillationConfig"]
 
@@ -66,7 +66,9 @@ class ReverseDistillationConfig(DetectorConfig):
         super().__post_init__()
         self.teacher_layers = tuple(self.teacher_layers)
         if self.amap_mode not in ("mul", "sum"):
-            raise ValueError(f"amap_mode must be 'mul' or 'sum', got {self.amap_mode!r}")
+            raise ValueError(
+                f"amap_mode must be 'mul' or 'sum', got {self.amap_mode!r}"
+            )
 
         family = family_of(self.teacher_backbone)
         if family == "dinov3_convnext":
@@ -197,7 +199,9 @@ class ResNetStudent(nn.Module):
         )
         downsample = nn.Sequential(_conv1x1(3072, 2048, stride=2), nn.BatchNorm2d(2048))
         self.fuse = nn.Sequential(
-            _Bottleneck(3072, 512, stride=2, downsample=downsample, base_width=base_width),
+            _Bottleneck(
+                3072, 512, stride=2, downsample=downsample, base_width=base_width
+            ),
             _Bottleneck(2048, 512, base_width=base_width),
             _Bottleneck(2048, 512, base_width=base_width),
         )
@@ -206,7 +210,9 @@ class ResNetStudent(nn.Module):
         self.up3 = self._layer(512, 64, 6, base_width)
 
     @staticmethod
-    def _layer(inplanes: int, planes: int, blocks: int, base_width: int) -> nn.Sequential:
+    def _layer(
+        inplanes: int, planes: int, blocks: int, base_width: int
+    ) -> nn.Sequential:
         out_channels = planes * _DeBottleneck.expansion
         upsample = nn.Sequential(
             _deconv2x2(inplanes, out_channels, stride=2), nn.BatchNorm2d(out_channels)
@@ -239,20 +245,30 @@ class ViTStudent(nn.Module):
         super().__init__()
         width = bottleneck_dim
         self.encoder = nn.Sequential(
-            _conv1x1(channels, width), nn.BatchNorm2d(width), nn.ReLU(inplace=True),
-            _conv3x3(width, width, 2), nn.BatchNorm2d(width), nn.ReLU(inplace=True),
-            _conv3x3(width, width, 2), nn.BatchNorm2d(width), nn.ReLU(inplace=True),
+            _conv1x1(channels, width),
+            nn.BatchNorm2d(width),
+            nn.ReLU(inplace=True),
+            _conv3x3(width, width, 2),
+            nn.BatchNorm2d(width),
+            nn.ReLU(inplace=True),
+            _conv3x3(width, width, 2),
+            nn.BatchNorm2d(width),
+            nn.ReLU(inplace=True),
         )
         self.decoder = nn.Sequential(
             nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
-            _conv3x3(width, width), nn.BatchNorm2d(width), nn.ReLU(inplace=True),
+            _conv3x3(width, width),
+            nn.BatchNorm2d(width),
+            nn.ReLU(inplace=True),
             nn.Upsample(scale_factor=2, mode="bilinear", align_corners=False),
-            _conv3x3(width, width), nn.BatchNorm2d(width), nn.ReLU(inplace=True),
+            _conv3x3(width, width),
+            nn.BatchNorm2d(width),
+            nn.ReLU(inplace=True),
             _conv1x1(width, channels),
         )
 
     def forward(self, teacher: dict[int, torch.Tensor]) -> dict[int, torch.Tensor]:
-        (layer, features), = teacher.items()
+        ((layer, features),) = teacher.items()
         decoded = self.decoder(self.encoder(features))
         if decoded.shape[-2:] != features.shape[-2:]:
             decoded = F.interpolate(
@@ -287,7 +303,9 @@ class ReverseDistillation(Detector[ReverseDistillationConfig]):
         maps = self.teacher(images, layers=self.config.teacher_layers)
         # Cloned out of the backbone's inference_mode so the student can
         # back-propagate through the comparison.
-        return {layer: maps[layer].float().clone() for layer in self.config.teacher_layers}
+        return {
+            layer: maps[layer].float().clone() for layer in self.config.teacher_layers
+        }
 
     # ── fit ──────────────────────────────────────────────────────────────
     def fit(self, train_good: Sequence[ImageRecord]) -> None:

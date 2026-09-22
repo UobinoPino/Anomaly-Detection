@@ -38,6 +38,7 @@ from spacepresso.backbones import (
     validate_input_size,
 )
 from spacepresso.backbones.registry import family_of
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.logging import now_hms
 from spacepresso.core.records import ImageRecord
 from spacepresso.data.synthesis import cutpaste, cutpaste_scar
@@ -45,7 +46,6 @@ from spacepresso.data.transforms import IMAGENET_MEAN, IMAGENET_STD
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.coreset import MemoryBank, greedy_coreset
 from spacepresso.detectors.training import train_loop
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["CutPaste", "CutPasteConfig"]
 
@@ -180,7 +180,9 @@ class _Classifier(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         maps = self.backbone(x, layers=self.layers)
-        pooled = [maps[layer].float().clone().mean(dim=(-2, -1)) for layer in self.layers]
+        pooled = [
+            maps[layer].float().clone().mean(dim=(-2, -1)) for layer in self.layers
+        ]
         return self.head(torch.cat(pooled, dim=1))
 
 
@@ -305,7 +307,7 @@ class CutPaste(Detector[CutPasteConfig]):
             raise RuntimeError("CutPaste.score_batch() called before fit()")
         features = self._patch_features(images)
         batch, n_patches, channels = features.shape
-        side = int(math.isqrt(n_patches))
+        side = math.isqrt(n_patches)
         distances = self.bank.distance(
             features.reshape(-1, channels),
             query_chunk=self.config.score_chunk,

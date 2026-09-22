@@ -56,9 +56,7 @@ class SpacepressoDataset(Dataset):
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, int]:
         record = self.records[index]
         image = load_image(record.path, self.transform)
-        mask = load_mask(
-            record.mask_path if self.load_masks else None, self.input_size
-        )
+        mask = load_mask(record.mask_path if self.load_masks else None, self.input_size)
         return image, torch.from_numpy(mask), index
 
 
@@ -92,8 +90,10 @@ def make_loader(
     on the fly) but want the same worker seeding, pinning and persistence
     policy as everything else.
     """
-    ds = dataset if dataset is not None else SpacepressoDataset(
-        records, input_size=input_size, load_masks=load_masks
+    ds = (
+        dataset
+        if dataset is not None
+        else SpacepressoDataset(records, input_size=input_size, load_masks=load_masks)
     )
     return DataLoader(
         ds,

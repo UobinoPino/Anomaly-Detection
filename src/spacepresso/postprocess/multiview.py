@@ -102,9 +102,7 @@ def fit_view_norm(
             scored = score_batch(images)
             chunks.append(np.asarray(scored.cpu(), dtype=np.float32).reshape(-1))
 
-        flat = (
-            np.concatenate(chunks) if chunks else np.zeros(1, dtype=np.float32)
-        )
+        flat = np.concatenate(chunks) if chunks else np.zeros(1, dtype=np.float32)
         if flat.size > max_pixels_per_view:
             keep = rng.choice(flat.size, size=max_pixels_per_view, replace=False)
             flat = flat[keep]
@@ -165,7 +163,5 @@ def load_view_stats(path) -> ViewStats:
     with np.load(path) as handle:
         return {
             int(view): (float(lo), float(hi))
-            for view, (lo, hi) in zip(
-                handle["views"], handle["bounds"], strict=True
-            )
+            for view, (lo, hi) in zip(handle["views"], handle["bounds"], strict=True)
         }

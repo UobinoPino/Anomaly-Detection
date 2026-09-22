@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from spacepresso.runner.config import RuntimeConfig
+from spacepresso.config import RuntimeConfig
 from spacepresso.runner.experiment import RunResult, run_experiment
 
 __all__ = ["offline_backbones", "run_detector"]

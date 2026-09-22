@@ -68,9 +68,7 @@ class Backbone(nn.Module, ABC):
         return self
 
     @abstractmethod
-    def forward(
-        self, x: torch.Tensor, layers: Sequence[int] = (2, 3)
-    ) -> FeatureMaps:
+    def forward(self, x: torch.Tensor, layers: Sequence[int] = (2, 3)) -> FeatureMaps:
         """Return ``{layer: (B, C, H', W')}`` for each requested layer."""
         raise NotImplementedError
 

@@ -85,7 +85,9 @@ def train_loop(
     ``device`` before ``loss_fn`` sees them.
     """
     modules = list(modules)
-    parameters = [p for module in modules for p in module.parameters() if p.requires_grad]
+    parameters = [
+        p for module in modules for p in module.parameters() if p.requires_grad
+    ]
     if not parameters:
         raise ValueError(f"{label}: no trainable parameters")
 
@@ -142,7 +144,8 @@ def train_loop(
 
         if (epoch + 1) % log_every == 0 or epoch == schedule.epochs - 1:
             parts = " ".join(
-                f"{key}={total / max(seen, 1):.4f}" for key, total in sorted(totals.items())
+                f"{key}={total / max(seen, 1):.4f}"
+                for key, total in sorted(totals.items())
             )
             logger.info(
                 "      epoch %3d/%d  %s  lr=%.2e  elapsed=%.1fs",

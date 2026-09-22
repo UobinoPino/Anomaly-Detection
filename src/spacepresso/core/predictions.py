@@ -82,8 +82,15 @@ class PredictionWriter:
         self._views: list[int] = []
         self._image_paths: list[str] = []
 
-        self._score_fh = open(self._scratch / "scores.raw", "wb")
-        self._mask_fh = open(self._scratch / "masks.raw", "wb") if with_masks else None
+        # These stay open for the writer's lifetime by design — it is a
+        # streaming accumulator, and is itself a context manager. noqa: the
+        # rule cannot see that ownership is transferred to the object.
+        self._score_fh = open(self._scratch / "scores.raw", "wb")  # noqa: SIM115
+        self._mask_fh = (
+            open(self._scratch / "masks.raw", "wb")  # noqa: SIM115
+            if with_masks
+            else None
+        )
 
         self._n_nonfinite = 0
         self._n_constant = 0
@@ -253,7 +260,9 @@ class PredictionWriter:
             )
         # Tail-saturation heuristic: a flat top 0.1% means the score was
         # clipped upstream, which is the single most common integration bug.
-        top = float(np.percentile(np.asarray(scores[:: max(1, self._n // 64) or 1]), 99.9))
+        top = float(
+            np.percentile(np.asarray(scores[:: max(1, self._n // 64) or 1]), 99.9)
+        )
         peak = float(self._max)
         if peak > 0 and np.isclose(top, peak):
             logger.warning(

@@ -46,14 +46,18 @@ def build_dataset(
         base = np.linspace(40, 200, size, dtype=np.float32)
         canvas = np.outer(base, np.ones(size, dtype=np.float32))
 
-        def normal(offset: float) -> np.ndarray:
-            noisy = canvas + offset + rng.normal(0, 4, (size, size))
+        def normal(offset: float, base: np.ndarray = canvas) -> np.ndarray:
+            noisy = base + offset + rng.normal(0, 4, (size, size))
             return np.clip(noisy, 0, 255).astype(np.uint8)
 
         for index in range(n_good):
             for view in range(n_views):
                 _save(
-                    root / cls / "train" / "good" / f"{cls}_good{index:02d}_view{view:02d}.png",
+                    root
+                    / cls
+                    / "train"
+                    / "good"
+                    / f"{cls}_good{index:02d}_view{view:02d}.png",
                     np.stack([normal(view * 6)] * 3, axis=-1),
                 )
 

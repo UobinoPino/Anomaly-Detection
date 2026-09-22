@@ -104,7 +104,11 @@ def load_validation(
 
     height, width = predictions[0]["scores"].shape[1:3]
     logger.info(
-        "  aligning %d images × %d methods at %dx%d", len(common), len(names), height, width
+        "  aligning %d images × %d methods at %dx%d",
+        len(common),
+        len(names),
+        height,
+        width,
     )
 
     n = len(common)

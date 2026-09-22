@@ -140,9 +140,7 @@ def scan_dataset(data_root: Path | str) -> list[ImageRecord]:
 
         for p in _images_in(cdir / "train" / "good"):
             sid, view = parse_view(p.name)
-            records.append(
-                ImageRecord(p, cls, TRAIN_GOOD, sample_id=sid, view=view)
-            )
+            records.append(ImageRecord(p, cls, TRAIN_GOOD, sample_id=sid, view=view))
 
         train_dir = cdir / "train"
         if train_dir.is_dir():

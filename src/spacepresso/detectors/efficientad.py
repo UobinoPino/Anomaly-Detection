@@ -28,10 +28,10 @@ from torch import nn
 
 from spacepresso.backbones import build_backbone, short_tag, validate_input_size
 from spacepresso.backbones.registry import family_of, n_layers
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.training import train_loop
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["EfficientAD", "EfficientADConfig"]
 
@@ -67,9 +67,7 @@ class EfficientADConfig(DetectorConfig):
         if self.teacher_layer is not None:
             parts.append(f"L{self.teacher_layer}")
         parts.append(f"in{self.input_size}")
-        parts.append(
-            f"it{self.total_iters}" if self.total_iters else f"e{self.epochs}"
-        )
+        parts.append(f"it{self.total_iters}" if self.total_iters else f"e{self.epochs}")
         parts.append(f"bs{self.train_batch_size}")
         if self.tta != "none":
             parts.append(f"tta-{self.tta}")
@@ -79,7 +77,9 @@ class EfficientADConfig(DetectorConfig):
 # ─────────────────────────────────────────────────────────────────────────────
 # Networks
 # ─────────────────────────────────────────────────────────────────────────────
-def _conv_block(c_in: int, c_out: int, kernel: int = 3, stride: int = 1) -> nn.Sequential:
+def _conv_block(
+    c_in: int, c_out: int, kernel: int = 3, stride: int = 1
+) -> nn.Sequential:
     return nn.Sequential(
         nn.Conv2d(c_in, c_out, kernel, stride=stride, padding=kernel // 2, bias=False),
         nn.BatchNorm2d(c_out),
@@ -200,9 +200,9 @@ class EfficientAD(Detector[EfficientADConfig]):
         )
         self.channels = self.teacher.out_channels
         self.student = StudentPDN(2 * self.channels).to(self.device)
-        self.autoencoder = Autoencoder(
-            self.channels, base=config.ae_base_channels
-        ).to(self.device)
+        self.autoencoder = Autoencoder(self.channels, base=config.ae_base_channels).to(
+            self.device
+        )
         self.stats: dict[str, float] | None = None
 
     # ── fit ──────────────────────────────────────────────────────────────
@@ -213,7 +213,9 @@ class EfficientAD(Detector[EfficientADConfig]):
             shuffle=True,
             drop_last=True,
         )
-        self.log.info("    teacher: %s, %d channels", self.config.teacher_backbone, self.channels)
+        self.log.info(
+            "    teacher: %s, %d channels", self.config.teacher_backbone, self.channels
+        )
 
         train_loop(
             [self.student, self.autoencoder],
@@ -255,9 +257,7 @@ class EfficientAD(Detector[EfficientADConfig]):
         }
 
     @torch.inference_mode()
-    def _compute_norm_stats(
-        self, records: Sequence[ImageRecord]
-    ) -> dict[str, float]:
+    def _compute_norm_stats(self, records: Sequence[ImageRecord]) -> dict[str, float]:
         """Per-term mean and std over normal images.
 
         The two terms live on unrelated scales; without z-scoring, whichever

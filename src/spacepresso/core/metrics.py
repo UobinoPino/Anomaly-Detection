@@ -58,9 +58,7 @@ def average_precision(
     return float(average_precision_score(y, s))
 
 
-def per_image_ap(
-    score: npt.NDArray[np.floating], gt: npt.NDArray[np.integer]
-) -> float:
+def per_image_ap(score: npt.NDArray[np.floating], gt: npt.NDArray[np.integer]) -> float:
     """Pixel-AP for a single ``(H, W)`` score map against its mask."""
     return average_precision(score, gt)
 

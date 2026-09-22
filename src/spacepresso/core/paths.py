@@ -75,8 +75,7 @@ def resolve_data_root(explicit: Path | str | None = None) -> Path:
     root = Path(explicit).expanduser() if explicit else default_data_root()
     if not root.is_dir():
         raise FileNotFoundError(
-            f"data root not found: {root}\n"
-            f"Pass --data-root, or set ${ENV_DATA_ROOT}."
+            f"data root not found: {root}\nPass --data-root, or set ${ENV_DATA_ROOT}."
         )
     return root.resolve()
 

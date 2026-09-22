@@ -27,11 +27,11 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.logging import get_logger
 from spacepresso.core.records import ImageRecord
 from spacepresso.data.datasets import make_loader
 from spacepresso.postprocess.tta import apply_tta
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["Detector", "ScoreMap", "ScoreMaps"]
 

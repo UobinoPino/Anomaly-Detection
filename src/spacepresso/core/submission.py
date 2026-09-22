@@ -112,27 +112,25 @@ def zip_submission(csv_path: Path) -> Path:
     return zip_path
 
 
+def _rows_to_dict(rows, path: Path) -> dict[str, str]:
+    """Skip the header and collect ``{id: payload}``."""
+    if next(rows, None) is None:
+        raise ValueError(f"empty submission file: {path}")
+    return {row[0]: row[1] for row in rows if len(row) >= 2}
+
+
 def load_submission(path: Path) -> dict[str, str]:
     """Read a submission CSV (or its zip) into ``{image_id: q8rle payload}``."""
     path = Path(path)
     if path.suffix == ".zip":
-        with zipfile.ZipFile(path) as zf:
-            inner = next(n for n in zf.namelist() if n.endswith(".csv"))
-            with zf.open(inner) as fh:
-                text = fh.read().decode("utf-8")
+        with zipfile.ZipFile(path) as archive:
+            inner = next(n for n in archive.namelist() if n.endswith(".csv"))
+            text = archive.read(inner).decode("utf-8")
         rows = csv.reader(text.splitlines())
+        out = _rows_to_dict(rows, path)
     else:
-        fh = open(path, newline="", encoding="utf-8")
-        rows = csv.reader(fh)
-
-    try:
-        header = next(rows, None)
-        if header is None:
-            raise ValueError(f"empty submission file: {path}")
-        out = {row[0]: row[1] for row in rows if len(row) >= 2}
-    finally:
-        if path.suffix != ".zip":
-            fh.close()
+        with open(path, newline="", encoding="utf-8") as handle:
+            out = _rows_to_dict(csv.reader(handle), path)
 
     if not out:
         raise ValueError(f"submission has a header but no rows: {path}")

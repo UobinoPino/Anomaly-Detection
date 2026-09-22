@@ -34,14 +34,17 @@ import numpy.typing as npt
 
 from spacepresso.core.logging import log_section, log_subsection, run_log, setup_logging
 from spacepresso.core.metrics import average_precision
-from spacepresso.core.records import ImageRecord, scan_dataset
+from spacepresso.core.records import ImageRecord, parse_view, scan_dataset
 from spacepresso.core.submission import write_submission
 from spacepresso.core.tracking import append_to_master, make_run_id
-from spacepresso.postprocess.spatial import load_spatial_priors, suppress_small_components
+from spacepresso.postprocess.spatial import (
+    load_spatial_priors,
+    suppress_small_components,
+)
 from spacepresso.stacking.calibration import CalibrationMethod, fit_calibrator
 from spacepresso.stacking.crossval import (
-    CVMode,
     ClassTrainingData,
+    CVMode,
     out_of_fold,
     pooled_cv_score,
 )
@@ -256,9 +259,7 @@ def _tune(
     study = optuna.create_study(
         direction="maximize", sampler=optuna.samplers.TPESampler(seed=config.seed)
     )
-    study.optimize(
-        objective, n_trials=config.tune_trials, timeout=config.tune_timeout
-    )
+    study.optimize(objective, n_trials=config.tune_trials, timeout=config.tune_timeout)
 
     best = dict(study.best_params)
     if config.estimator == "xgboost":
@@ -493,8 +494,6 @@ def _fuse_test(
 
 
 def _view_of(image_id: str) -> int | None:
-    from spacepresso.core.records import parse_view
-
     _, view = parse_view(f"{image_id}.png")
     return view
 

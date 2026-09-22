@@ -55,9 +55,10 @@ def _project(
     started = time.time()
     for start in range(0, n, chunk):
         end = min(n, start + chunk)
-        out[start:end] = features[start:end].to(
-            device, dtype=torch.float32, non_blocking=True
-        ) @ projection
+        out[start:end] = (
+            features[start:end].to(device, dtype=torch.float32, non_blocking=True)
+            @ projection
+        )
 
     del projection
     if torch.cuda.is_available():

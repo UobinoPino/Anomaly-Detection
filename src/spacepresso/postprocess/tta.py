@@ -28,34 +28,49 @@ ScoreFn = Callable[[torch.Tensor], torch.Tensor]
 
 def _transforms(
     mode: TTAMode,
-) -> Iterator[tuple[Callable[[torch.Tensor], torch.Tensor], Callable[[torch.Tensor], torch.Tensor]]]:
+) -> Iterator[
+    tuple[
+        Callable[[torch.Tensor], torch.Tensor], Callable[[torch.Tensor], torch.Tensor]
+    ]
+]:
     """Yield ``(forward, inverse)`` pairs for a TTA mode.
 
     ``forward`` maps the input image, ``inverse`` maps the resulting score map
-    back to the original orientation. Each is its own involution here, but
-    they are returned as a pair because ``d4`` includes rotations, where they
-    differ.
+    back to the original orientation. Flips are their own inverse; rotations
+    are not, which is why these come in pairs.
+
+    ``d4`` is the full dihedral group of the square: the four rotations, and
+    those same four composed with a horizontal flip. That gives eight
+    *distinct* transforms. Enumerating it as "the flips, plus the rotations"
+    is the tempting mistake — a horizontal and a vertical flip together are a
+    180-degree rotation, so that list both repeats one element and omits the
+    two diagonal reflections.
     """
     identity = lambda t: t  # noqa: E731
     hflip = lambda t: torch.flip(t, dims=[-1])  # noqa: E731
     vflip = lambda t: torch.flip(t, dims=[-2])  # noqa: E731
-    hvflip = lambda t: torch.flip(t, dims=[-2, -1])  # noqa: E731
 
     yield identity, identity
     if mode == "none":
         return
-    if mode in ("hflip", "hvflip", "d4"):
+
+    if mode in ("hflip", "hvflip"):
         yield hflip, hflip
-    if mode in ("vflip", "hvflip", "d4"):
+    if mode in ("vflip", "hvflip"):
         yield vflip, vflip
+
     if mode == "d4":
-        yield hvflip, hvflip
-        # The four 90-degree rotations. rot90(k) is undone by rot90(-k), so
-        # forward and inverse genuinely differ for these.
         for k in (1, 2, 3):
             yield (
                 lambda t, k=k: torch.rot90(t, k, dims=[-2, -1]),
                 lambda t, k=k: torch.rot90(t, -k, dims=[-2, -1]),
+            )
+        for k in (0, 1, 2, 3):
+            # rot90(k) ∘ hflip. Undone by hflip ∘ rot90(-k), in that order:
+            # the two do not commute.
+            yield (
+                lambda t, k=k: torch.rot90(hflip(t), k, dims=[-2, -1]),
+                lambda t, k=k: hflip(torch.rot90(t, -k, dims=[-2, -1])),
             )
 
 

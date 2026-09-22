@@ -56,9 +56,7 @@ class Calibrator:
     ) -> npt.NDArray[np.float32]:
         return self.apply(predictions)
 
-    def apply(
-        self, predictions: npt.NDArray[np.floating]
-    ) -> npt.NDArray[np.float32]:
+    def apply(self, predictions: npt.NDArray[np.floating]) -> npt.NDArray[np.float32]:
         values = np.asarray(predictions, dtype=np.float64).ravel()
         if self.method == "none" or self.model is None:
             return values.astype(np.float32)

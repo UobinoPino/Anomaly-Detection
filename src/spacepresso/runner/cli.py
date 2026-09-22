@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any, get_args, get_origin, get_type_hints
 
 from spacepresso.core.logging import get_logger, setup_logging
+
 __all__ = ["main"]
 
 logger = get_logger(__name__)
@@ -62,8 +63,9 @@ def _add_field(
 
     if annotation is bool:
         # Both spellings, so a config file default of True stays overridable.
-        parser.add_argument(flag, dest=field.name, action="store_true", default=None,
-                            help=help_text)
+        parser.add_argument(
+            flag, dest=field.name, action="store_true", default=None, help=help_text
+        )
         parser.add_argument(
             "--no-" + field.name.replace("_", "-"),
             dest=field.name,
@@ -77,14 +79,21 @@ def _add_field(
         inner = get_args(annotation)
         item_type = _scalar_type(inner[0]) if inner else str
         parser.add_argument(
-            flag, dest=field.name, nargs="*", type=item_type, default=None,
-            help=help_text
+            flag,
+            dest=field.name,
+            nargs="*",
+            type=item_type,
+            default=None,
+            help=help_text,
         )
         return
 
     parser.add_argument(
-        flag, dest=field.name, type=_scalar_type(annotation), default=None,
-        help=help_text
+        flag,
+        dest=field.name,
+        type=_scalar_type(annotation),
+        default=None,
+        help=help_text,
     )
 
 
@@ -124,9 +133,9 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 # Subcommands
 # ─────────────────────────────────────────────────────────────────────────────
 def _cmd_list(_args: argparse.Namespace) -> int:
-    from spacepresso.detectors import get_detector, list_detectors
-
     import sys as _sys
+
+    from spacepresso.detectors import get_detector, list_detectors
 
     print("Detectors:")
     for name in list_detectors():
@@ -145,8 +154,8 @@ def _cmd_list(_args: argparse.Namespace) -> int:
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
+    from spacepresso.config import RuntimeConfig
     from spacepresso.detectors import get_detector
-    from spacepresso.runner.config import RuntimeConfig
     from spacepresso.runner.experiment import run_experiment
 
     file_values: dict[str, Any] = {}
@@ -163,10 +172,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
     detector_class, config_class = get_detector(name)
     cli_values = vars(args)
 
-    detector_values = {**file_values.get("config", {}),
-                       **_apply_overrides(config_class, cli_values)}
-    runtime_values = {**file_values.get("runtime", {}),
-                      **_apply_overrides(RuntimeConfig, cli_values)}
+    detector_values = {
+        **file_values.get("config", {}),
+        **_apply_overrides(config_class, cli_values),
+    }
+    runtime_values = {
+        **file_values.get("runtime", {}),
+        **_apply_overrides(RuntimeConfig, cli_values),
+    }
 
     config = config_class(**detector_values)
     runtime = RuntimeConfig(**runtime_values)
@@ -210,8 +223,8 @@ def _cmd_stack(args: argparse.Namespace) -> int:
 # Parser
 # ─────────────────────────────────────────────────────────────────────────────
 def build_parser() -> argparse.ArgumentParser:
+    from spacepresso.config import RuntimeConfig
     from spacepresso.detectors import get_detector, list_detectors
-    from spacepresso.runner.config import RuntimeConfig
     from spacepresso.stacking.stacker import StackerConfig
 
     parser = argparse.ArgumentParser(

@@ -28,10 +28,10 @@ from torch import nn
 
 from spacepresso.backbones import build_backbone, short_tag, validate_input_size
 from spacepresso.backbones.registry import channels_for, patch_size_of
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.training import train_loop
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["UniAD", "UniADConfig"]
 
@@ -142,7 +142,9 @@ class EncoderBlock(nn.Module):
     def __init__(self, dim: int, heads: int, ratio: float, dropout: float) -> None:
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
-        self.attention = nn.MultiheadAttention(dim, heads, dropout=dropout, batch_first=True)
+        self.attention = nn.MultiheadAttention(
+            dim, heads, dropout=dropout, batch_first=True
+        )
         self.norm2 = nn.LayerNorm(dim)
         self.mlp = _mlp(dim, ratio, dropout)
 
@@ -162,7 +164,9 @@ class DecoderBlock(nn.Module):
         super().__init__()
         self.norm_q = nn.LayerNorm(dim)
         self.norm_kv = nn.LayerNorm(dim)
-        self.cross = nn.MultiheadAttention(dim, heads, dropout=dropout, batch_first=True)
+        self.cross = nn.MultiheadAttention(
+            dim, heads, dropout=dropout, batch_first=True
+        )
         self.norm_self = nn.LayerNorm(dim)
         self.self_attention = nn.MultiheadAttention(
             dim, heads, dropout=dropout, batch_first=True
@@ -249,7 +253,9 @@ class ReconstructionTransformer(nn.Module):
             decoded = block(decoded, encoded, attn_mask=self.attn_mask)
 
         reconstruction = self.output_proj(self.norm_out(decoded))
-        return reconstruction.reshape(batch, height, width, channels).permute(0, 3, 1, 2)
+        return reconstruction.reshape(batch, height, width, channels).permute(
+            0, 3, 1, 2
+        )
 
 
 class UniAD(Detector[UniADConfig]):

@@ -30,10 +30,10 @@ import torch
 
 from spacepresso.backbones import build_backbone, short_tag, validate_input_size
 from spacepresso.backbones.registry import patch_size_of
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.logging import now_hms
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["DinoDPMM", "DinoDPMMConfig", "TorchPCA"]
 
@@ -114,9 +114,7 @@ class TorchPCA:
         variance = (singular**2) / max(centred.shape[0] - 1, 1)
         total = float((centred**2).sum().item()) / max(centred.shape[0] - 1, 1)
         if total > 0:
-            self.explained_variance_ratio = (
-                variance[: self.dim].cpu().numpy() / total
-            )
+            self.explained_variance_ratio = variance[: self.dim].cpu().numpy() / total
         return self
 
     @torch.inference_mode()
@@ -262,7 +260,9 @@ class DinoDPMM(Detector[DinoDPMMConfig]):
             )
         ]
         features = torch.cat(chunks, dim=0)
-        self.log.info("    -> %d patches, %d dims", features.shape[0], features.shape[1])
+        self.log.info(
+            "    -> %d patches, %d dims", features.shape[0], features.shape[1]
+        )
 
         self.pca = TorchPCA(
             self.config.pca_dim, self.config.pca_fit_subsample, self.config.seed
@@ -316,7 +316,7 @@ class DinoDPMM(Detector[DinoDPMMConfig]):
             raise RuntimeError("DinoDPMM.score_batch() called before fit()")
 
         tokens = self._patch_tokens(images)
-        batch, n_patches, channels = tokens.shape
+        batch, _n_patches, channels = tokens.shape
         projected = self.pca.transform(tokens.reshape(-1, channels))
         # Negative log-likelihood: high where the patch is unlikely.
         scores = -self.mixture.log_prob(projected)

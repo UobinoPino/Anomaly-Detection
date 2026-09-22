@@ -120,7 +120,7 @@ def _load_dinov3_from_hub(name: str) -> nn.Module | None:
         return None
     try:
         return torch.hub.load(str(repo), name, source="local", weights=weights)
-    except Exception as exc:  # noqa: BLE001 — fall through to the HF path
+    except Exception as exc:
         logger.warning("DINOv3 torch.hub load failed for %s: %s", name, exc)
         return None
 
@@ -137,7 +137,7 @@ def _load_dinov3_from_hf(spec: BackboneSpec) -> nn.Module | None:
         return None
     try:
         backbone = AutoModel.from_pretrained(model_id)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("HuggingFace load of %s failed: %s", model_id, exc)
         return None
     backbone.eval()
@@ -257,9 +257,7 @@ class DinoBackbone(Backbone):
         return self.spec.family == "dinov3_convnext"
 
     @torch.inference_mode()
-    def forward(
-        self, x: torch.Tensor, layers: Sequence[int] = (9,)
-    ) -> FeatureMaps:
+    def forward(self, x: torch.Tensor, layers: Sequence[int] = (9,)) -> FeatureMaps:
         wanted = sorted({int(layer) for layer in layers})
         for layer in wanted:
             if not 0 <= layer < self.spec.n_layers:

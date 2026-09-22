@@ -47,9 +47,7 @@ class ResNetBackbone(Backbone):
         self.freeze()
 
     @torch.inference_mode()
-    def forward(
-        self, x: torch.Tensor, layers: Sequence[int] = (2, 3)
-    ) -> FeatureMaps:
+    def forward(self, x: torch.Tensor, layers: Sequence[int] = (2, 3)) -> FeatureMaps:
         wanted = sorted({int(layer) for layer in layers})
         for layer in wanted:
             if layer not in self.spec.channels:

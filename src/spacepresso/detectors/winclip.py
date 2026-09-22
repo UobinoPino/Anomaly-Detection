@@ -24,7 +24,7 @@ this robust to the multi-view drift in this dataset.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
 
@@ -32,6 +32,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.paths import project_root
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
@@ -40,7 +41,6 @@ from spacepresso.detectors.prompts import (
     build_prompts,
     load_descriptions,
 )
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["WinCLIP", "WinCLIPConfig"]
 
@@ -112,7 +112,9 @@ class WinCLIP(Detector[WinCLIPConfig]):
             ) from exc
 
         model, _, _ = open_clip.create_model_and_transforms(
-            self.config.model_name, pretrained=self.config.pretrained, device=self.device
+            self.config.model_name,
+            pretrained=self.config.pretrained,
+            device=self.device,
         )
         model.eval()
         for parameter in model.parameters():
@@ -163,7 +165,9 @@ class WinCLIP(Detector[WinCLIPConfig]):
             with self.autocast():
                 features = self.model.encode_text(tokens)
             features = F.normalize(features.float(), dim=-1)
-            total = features.sum(dim=0) if total is None else total + features.sum(dim=0)
+            total = (
+                features.sum(dim=0) if total is None else total + features.sum(dim=0)
+            )
             count += features.shape[0]
         assert total is not None
         return F.normalize(total / max(count, 1), dim=-1)
@@ -227,9 +231,9 @@ class WinCLIP(Detector[WinCLIPConfig]):
         """
         by_view: dict[int, list[ImageRecord]] = {}
         for record in train_good:
-            by_view.setdefault(record.view if record.view is not None else 0, []).append(
-                record
-            )
+            by_view.setdefault(
+                record.view if record.view is not None else 0, []
+            ).append(record)
 
         selected: list[ImageRecord] = []
         rng = np.random.default_rng(self.config.seed)

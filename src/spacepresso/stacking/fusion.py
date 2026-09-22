@@ -40,8 +40,8 @@ def ecdf_transform(
     """
     ordered = np.sort(np.asarray(reference, dtype=np.float32).ravel())
     positions = np.searchsorted(ordered, np.asarray(values, dtype=np.float32).ravel())
-    return (positions / max(ordered.size, 1)).astype(np.float32).reshape(
-        np.shape(values)
+    return (
+        (positions / max(ordered.size, 1)).astype(np.float32).reshape(np.shape(values))
     )
 
 
@@ -78,9 +78,7 @@ def fuse(
             raise ValueError(f"the {rule!r} rule does not accept weights")
         weight_array = np.asarray(weights, dtype=np.float32)
         if weight_array.size != n_methods:
-            raise ValueError(
-                f"got {weight_array.size} weights for {n_methods} methods"
-            )
+            raise ValueError(f"got {weight_array.size} weights for {n_methods} methods")
         total = float(weight_array.sum())
         if total <= 0:
             raise ValueError("weights must sum to a positive value")

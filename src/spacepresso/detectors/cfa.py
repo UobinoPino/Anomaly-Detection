@@ -33,12 +33,12 @@ from spacepresso.backbones import (
     short_tag,
     validate_input_size,
 )
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.logging import now_hms
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.coreset import greedy_coreset
 from spacepresso.detectors.training import train_loop
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["CFA", "CFAConfig"]
 
@@ -170,13 +170,13 @@ def contrastive_loss(
     for start in range(0, patches.shape[0], chunk):
         block = patches[start : start + chunk]
         block_norm_sq = (block * block).sum(dim=1, keepdim=True)
-        inner = (
-            (block.bfloat16() @ memory_t).float() if use_bf16 else block @ memory_t
-        )
+        inner = (block.bfloat16() @ memory_t).float() if use_bf16 else block @ memory_t
         # Cancellation can produce tiny negatives; clamping is gradient-safe
         # because it only bites where d² ≈ 0 < r², inside the attraction zone
         # where relu(d² - r²) already has zero gradient.
-        distances = (block_norm_sq + memory_norm_sq.unsqueeze(0) - 2.0 * inner).clamp_min(0.0)
+        distances = (
+            block_norm_sq + memory_norm_sq.unsqueeze(0) - 2.0 * inner
+        ).clamp_min(0.0)
 
         nearest, _ = torch.topk(distances, k_total, dim=1, largest=False)
         attract = nearest[:, :k_attract]
@@ -208,7 +208,9 @@ class CFA(Detector[CFAConfig]):
         maps = self.backbone(images, layers=self.config.feature_layers)
         assert self.config.target_layer is not None
         features = patchify_and_combine(
-            maps, patch_size=self.config.patch_size, target_layer=self.config.target_layer
+            maps,
+            patch_size=self.config.patch_size,
+            target_layer=self.config.target_layer,
         )
         # Clone out of the backbone's inference_mode: these feed a trainable
         # descriptor and inference tensors cannot be saved for backward.
@@ -336,7 +338,7 @@ class CFA(Detector[CFAConfig]):
         with self.autocast():
             features = self._patch_features(images)
         batch, n_patches, channels = features.shape
-        side = int(math.isqrt(n_patches))
+        side = math.isqrt(n_patches)
 
         adapted = self.descriptor(features.reshape(-1, channels))
         k = min(self.config.k_test, self.adapted_memory.shape[0])

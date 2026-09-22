@@ -25,7 +25,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -37,11 +36,11 @@ from spacepresso.backbones import (
     short_tag,
     validate_input_size,
 )
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.records import ImageRecord
 from spacepresso.data.synthesis import perlin_batch_torch
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.training import train_loop
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["GLASS", "GLASSConfig"]
 
@@ -196,7 +195,10 @@ class GLASS(Detector[GLASSConfig]):
         self.dim = dim
         self.adapter = Adapter(dim, config.dropout).to(self.device)
         self.discriminator = Discriminator(
-            dim, config.discriminator_hidden, config.discriminator_layers, config.dropout
+            dim,
+            config.discriminator_hidden,
+            config.discriminator_layers,
+            config.dropout,
         ).to(self.device)
         self._step = 0
         self._generator = torch.Generator(device=self.device).manual_seed(config.seed)
@@ -205,7 +207,9 @@ class GLASS(Detector[GLASSConfig]):
         maps = self.backbone(images, layers=self.config.feature_layers)
         assert self.config.target_layer is not None
         combined = patchify_and_combine(
-            maps, patch_size=self.config.patch_size, target_layer=self.config.target_layer
+            maps,
+            patch_size=self.config.patch_size,
+            target_layer=self.config.target_layer,
         )
         return combined.float().clone()
 
@@ -268,14 +272,15 @@ class GLASS(Detector[GLASSConfig]):
             local_raw = self._features(corrupted)
 
         n_patches = normal_raw.shape[1]
-        side = int(math.isqrt(n_patches))
+        side = math.isqrt(n_patches)
         patch_mask = self._mask_to_patches(mask, side, side)
 
         normal = self.adapter(normal_raw).reshape(batch * n_patches, self.dim)
         local = self.adapter(local_raw).reshape(batch * n_patches, self.dim)
 
         l_normal = F.binary_cross_entropy_with_logits(
-            self.discriminator(normal), torch.zeros(batch * n_patches, 1, device=self.device)
+            self.discriminator(normal),
+            torch.zeros(batch * n_patches, 1, device=self.device),
         )
         l_local = F.binary_cross_entropy_with_logits(
             self.discriminator(local), patch_mask.reshape(-1, 1).clamp(0, 1)
@@ -313,7 +318,7 @@ class GLASS(Detector[GLASSConfig]):
         with self.autocast():
             features = self._features(images)
         batch, n_patches, _ = features.shape
-        side = int(math.isqrt(n_patches))
+        side = math.isqrt(n_patches)
         adapted = self.adapter(features).reshape(batch * n_patches, self.dim)
         logits = self.discriminator(adapted).float().reshape(batch, side, side)
         return self.upsample(torch.sigmoid(logits))

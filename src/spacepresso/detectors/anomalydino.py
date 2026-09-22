@@ -26,17 +26,16 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 
 from spacepresso.backbones import build_backbone, short_tag, validate_input_size
 from spacepresso.backbones.registry import patch_size_of
+from spacepresso.config import DetectorConfig, RuntimeConfig
 from spacepresso.core.logging import now_hms
 from spacepresso.core.records import ImageRecord
 from spacepresso.detectors.base import Detector
 from spacepresso.detectors.coreset import MemoryBank
-from spacepresso.runner.config import DetectorConfig, RuntimeConfig
 
 __all__ = ["AnomalyDINO", "AnomalyDINOConfig"]
 
@@ -147,7 +146,9 @@ class AnomalyDINO(Detector[AnomalyDINOConfig]):
         if self.config.use_foreground_mask:
             patches = self._keep_foreground(patches)
         else:
-            self.log.info("    foreground mask disabled — bank size %d", patches.shape[0])
+            self.log.info(
+                "    foreground mask disabled — bank size %d", patches.shape[0]
+            )
 
         dtype = torch.float16 if self.config.bank_dtype == "fp16" else torch.float32
         self.bank = MemoryBank(patches, dtype=dtype)
@@ -191,7 +192,7 @@ class AnomalyDINO(Detector[AnomalyDINOConfig]):
             memory_chunk=self.config.memory_chunk,
             k=self.config.knn_k,
         )
-        side = int(math.isqrt(n_patches))
+        side = math.isqrt(n_patches)
         return self.upsample(distances.reshape(batch, side, side))
 
     def release(self) -> None:

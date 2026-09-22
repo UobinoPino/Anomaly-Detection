@@ -38,8 +38,8 @@ from spacepresso.stacking.normalisation import rank_transform
 __all__ = [
     "FeatureConfig",
     "FeatureContext",
-    "featurize_image",
     "feature_names",
+    "featurize_image",
 ]
 
 Plane = npt.NDArray[np.float32]
@@ -131,11 +131,15 @@ def _ndimage():
 
 
 def _window_mean(plane: Plane, size: int) -> Plane:
-    return _ndimage().uniform_filter(plane, size=size, mode="reflect").astype(np.float32)
+    return (
+        _ndimage().uniform_filter(plane, size=size, mode="reflect").astype(np.float32)
+    )
 
 
 def _window_max(plane: Plane, size: int) -> Plane:
-    return _ndimage().maximum_filter(plane, size=size, mode="reflect").astype(np.float32)
+    return (
+        _ndimage().maximum_filter(plane, size=size, mode="reflect").astype(np.float32)
+    )
 
 
 def _window_std(plane: Plane, size: int) -> Plane:
@@ -146,7 +150,11 @@ def _window_std(plane: Plane, size: int) -> Plane:
 
 
 def _gaussian(plane: Plane, sigma: float) -> Plane:
-    return _ndimage().gaussian_filter(plane, sigma=sigma, mode="reflect").astype(np.float32)
+    return (
+        _ndimage()
+        .gaussian_filter(plane, sigma=sigma, mode="reflect")
+        .astype(np.float32)
+    )
 
 
 def _gradient_magnitude(plane: Plane) -> Plane:

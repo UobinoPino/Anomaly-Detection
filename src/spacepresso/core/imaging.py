@@ -67,9 +67,7 @@ def gaussian_smooth(
     return out
 
 
-def resize_nearest(
-    arr: npt.NDArray, shape: tuple[int, int]
-) -> npt.NDArray:
+def resize_nearest(arr: npt.NDArray, shape: tuple[int, int]) -> npt.NDArray:
     """Nearest-neighbour resize, dtype-preserving. Correct for masks."""
     src = np.asarray(arr)
     if src.shape == shape:

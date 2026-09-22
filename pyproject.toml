@@ -80,8 +80,15 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "TID", "RUF"]
 ignore = [
-    "E501",    # line length is Black's job
-    "B008",    # function call in default arg — common for Path() defaults
+    "E501",    # line length is the formatter's job
+    "B008",    # function call in a default arg — Path() defaults are fine
+    # The docstrings use real typography (—, ×, ≈). That is deliberate, and
+    # these rules only exist to catch homoglyph attacks in identifiers.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+    "RUF046",  # int() around an already-int expression reads more clearly
+    "UP046",   # PEP 695 generics — revisit once 3.12 is the floor everywhere
 ]
 
 [tool.ruff.lint.flake8-tidy-imports]
