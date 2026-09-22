@@ -1,0 +1,23 @@
+# PatchCore on DINOv2-with-registers — the strongest single detector in the
+# portfolio, and the reference configuration for the others.
+#
+#   spacepresso run --config configs/detectors/patchcore-dinov2.yaml
+detector: patchcore
+
+runtime:
+  num_workers: 8
+  batch_size: 32
+  score_batch_size: 16
+  run_tag: patchcore-dnv2b14reg
+
+config:
+  backbone: dinov2_vitb14_reg
+  feature_layers: [3, 6, 9, 11]
+  target_layer: 3
+  # 392 = 28 x 14: a multiple of the patch size, which the config validates.
+  input_size: 392
+  coreset_frac: 0.10
+  coreset_algorithm: minibatch
+  coreset_batch: 128
+  tta: hvflip
+  smooth_sigma: 1.5

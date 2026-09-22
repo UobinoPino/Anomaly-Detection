@@ -1,0 +1,25 @@
+# The interpretable baseline. If the boosted stacker does not clear this by a
+# useful margin, the gain is coming from the detectors rather than from the
+# stacking, and the extra machinery is not paying for itself.
+estimator: logreg
+
+val_scope: per_class
+test_scope: per_class
+cv_mode: loao
+calibrate: platt
+seed: 0
+
+features:
+  raw_score: true
+  per_image_rank: true
+  gaussian_sigmas: [3.0]
+  window_sizes: [7]
+  window_mean: true
+  cross_stats: true
+  cross_consensus: false
+  cross_cv: false
+  min_top_k: 0
+  spatial_coords: false
+  spatial_prior: false
+  class_onehot: true
+  view_onehot: false

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv tool install ruff
+      - name: ruff check
+        run: uvx ruff check src tests
+      - name: ruff format
+        run: uvx ruff format --check src tests
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # CPU torch: the GPU wheels are several GB and CI never needs them.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev]"
+
+      # The fixture dataset is synthetic and the backbones are randomly
+      # initialised, so nothing here reaches the network. Anything that would
+      # is marked `slow` and excluded.
+      - name: Unit tests
+        run: pytest tests -m "not slow" -q
+
+      - name: Pipeline smoke tests
+        run: pytest tests -m slow -q
+
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install mypy numpy
+      # core/ is the strict island; the rest is checked loosely.
+      - run: mypy src/spacepresso/core --ignore-missing-imports

@@ -1,0 +1,96 @@
+"""Test-time augmentation.
+
+The loop is the reusable part, so here it takes the single-pass function as an
+argument. A detector implements "score one batch, no augmentation" and gets
+every TTA mode for free.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
+from typing import Literal
+
+import torch
+
+__all__ = ["TTA_MODES", "TTAMode", "apply_tta"]
+
+TTAMode = Literal["none", "hflip", "vflip", "hvflip", "d4"]
+TTA_MODES: tuple[TTAMode, ...] = ("none", "hflip", "vflip", "hvflip", "d4")
+
+#: A function mapping ``(B, C, H, W)`` inputs to ``(B, H, W)`` score maps.
+ScoreFn = Callable[[torch.Tensor], torch.Tensor]
+
+
+def _transforms(
+    mode: TTAMode,
+) -> Iterator[
+    tuple[
+        Callable[[torch.Tensor], torch.Tensor], Callable[[torch.Tensor], torch.Tensor]
+    ]
+]:
+    """Yield ``(forward, inverse)`` pairs for a TTA mode.
+
+    ``d4`` is the full dihedral group of the square: the four rotations, and
+    those same four composed with a horizontal flip. That gives eight
+    *distinct* transforms. Enumerating it as "the flips, plus the rotations"
+    is the tempting mistake — a horizontal and a vertical flip together are a
+    180-degree rotation, so that list both repeats one element and omits the
+    two diagonal reflections.
+
+    """
+    identity = lambda t: t  # noqa: E731
+    hflip = lambda t: torch.flip(t, dims=[-1])  # noqa: E731
+    vflip = lambda t: torch.flip(t, dims=[-2])  # noqa: E731
+
+    yield identity, identity
+    if mode == "none":
+        return
+
+    if mode in ("hflip", "hvflip"):
+        yield hflip, hflip
+    if mode in ("vflip", "hvflip"):
+        yield vflip, vflip
+
+    if mode == "d4":
+        for k in (1, 2, 3):
+            yield (
+                lambda t, k=k: torch.rot90(t, k, dims=[-2, -1]),
+                lambda t, k=k: torch.rot90(t, -k, dims=[-2, -1]),
+            )
+        for k in (0, 1, 2, 3):
+            # rot90(k) ∘ hflip. Undone by hflip ∘ rot90(-k), in that order:
+            # the two do not commute.
+            yield (
+                lambda t, k=k: torch.rot90(hflip(t), k, dims=[-2, -1]),
+                lambda t, k=k: hflip(torch.rot90(t, -k, dims=[-2, -1])),
+            )
+
+
+def apply_tta(
+    score_fn: ScoreFn,
+    x: torch.Tensor,
+    mode: TTAMode = "none",
+) -> torch.Tensor:
+    """Average ``score_fn`` over the augmentations in ``mode``.
+
+    Args:
+        score_fn: scores one un-augmented batch, returning ``(B, H, W)``.
+        x: input batch, ``(B, C, H, W)``.
+        mode: ``none`` | ``hflip`` | ``vflip`` | ``hvflip`` | ``d4``.
+
+    Averaging in score space (rather than voting, or taking a max) is what the
+    detectors did before and what the calibration downstream assumes: the mean
+    of several unbiased score maps stays on the same scale as one of them.
+    """
+    if mode not in TTA_MODES:
+        raise ValueError(f"unknown TTA mode {mode!r}; expected one of {TTA_MODES}")
+
+    total: torch.Tensor | None = None
+    count = 0
+    for forward, inverse in _transforms(mode):
+        scored = inverse(score_fn(forward(x)))
+        total = scored.clone() if total is None else total + scored
+        count += 1
+
+    assert total is not None
+    return total / count

@@ -1,0 +1,18 @@
+# EfficientAD with a DINOv2 teacher. Trains a student and an autoencoder, so
+# it is slower than PatchCore but catches different defects — which is the
+# point of having a portfolio to stack.
+detector: efficientad
+
+runtime:
+  num_workers: 8
+  run_tag: efficientad-dnv2b14reg
+
+config:
+  teacher_backbone: dinov2_vitb14_reg
+  teacher_layer: 9
+  input_size: 392
+  total_iters: 5000
+  train_batch_size: 8
+  lr: 1.0e-4
+  hard_mining_pct: 0.10
+  tta: hvflip

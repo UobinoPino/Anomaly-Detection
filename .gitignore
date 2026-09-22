@@ -1,0 +1,54 @@
+# ── Run outputs ──────────────────────────────────────────────────────────────
+baseline_out/
+outputs/
+runs/
+*.npz
+*.zip
+submission.csv
+local_eval.csv
+run_log.txt
+
+# Keep the golden fixtures, which are deliberately small and version-controlled.
+!tests/golden/**/*.npz
+!tests/golden/**/submission.csv
+
+# ── Datasets ─────────────────────────────────────────────────────────────────
+data/class_*/
+data/**/*.png
+data/**/*.jpg
+data/**/*.jpeg
+data/**/*.bmp
+data/**/*.tif
+
+# ── Model weights / caches ───────────────────────────────────────────────────
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+.cache/
+stacker_cache/
+.torch/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# ── Tooling ──────────────────────────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# ── Editors / OS ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+.DS_Store

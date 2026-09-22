@@ -1,0 +1,32 @@
+# The leaderboard stacker: per-class gradient-boosted trees over several
+# detectors' rank-normalised scores, cross-validated leave-one-anomaly-type-out
+# and isotonically calibrated.
+#
+#   spacepresso stack --config configs/stacking/xgboost.yaml \
+#       --runs baseline_out/runs/<a> baseline_out/runs/<b> ...
+estimator: xgboost
+
+val_scope: per_class
+test_scope: per_class
+cv_mode: loao
+neg_per_pos: 30
+calibrate: isotonic
+tune_trials: 0
+device: cuda
+seed: 0
+
+features:
+  raw_score: true
+  per_image_rank: true
+  gaussian_sigmas: [3.0]
+  window_sizes: [7]
+  window_mean: true
+  image_aggregates: [imgp99, imgstd]
+  cross_stats: true
+  cross_consensus: true
+  cross_cv: true
+  min_top_k: 3
+  spatial_coords: true
+  spatial_prior: true
+  class_onehot: true
+  view_onehot: true
