@@ -1,11 +1,5 @@
 """Text-prompt construction for the language-grounded detectors.
 
-WinCLIP and TextAD both need a set of "this object is normal" and "this object
-is defective" sentences per class, and both read the project's
-``data/anomaly_descriptions.csv`` to ground those sentences in the defect
-types that actually occur. The construction lived inside
-``winclip_baseline.py``, which is why TextAD carried its own near-copy.
-
 The prompt ensemble follows WinCLIP's Compositional Prompt Ensemble: a grid of
 state words crossed with photo templates, averaged in embedding space. Single
 prompts are noisy — CLIP's text encoder is sensitive to phrasing in ways that
@@ -100,12 +94,7 @@ class ClassDescriptions:
 
 
 def extract_keywords(description: str) -> list[str]:
-    """Short defect noun-phrases implied by a description.
-
-    Conservative by design: only substrings with unambiguous defect semantics
-    trigger, so a description that says "no scratches were found" cannot add a
-    "a scratch" prompt through a looser match.
-    """
+    """Short defect noun-phrases implied by a description."""
     lowered = description.lower()
     found: list[str] = []
     seen: set[str] = set()

@@ -28,8 +28,7 @@ logger = get_logger(__name__)
 
 #: Computes the loss for one batch. Returns either a scalar loss, or a mapping
 #: of named components whose ``"loss"`` entry is the one to back-propagate —
-#: the rest are logged, which is how the per-component curves in the old run
-#: logs (``L_st``, ``L_ae``, ``L_stae``) are preserved.
+#: the rest are logged as per-component curves.
 LossFn = Callable[[torch.Tensor], torch.Tensor | Mapping[str, torch.Tensor]]
 
 

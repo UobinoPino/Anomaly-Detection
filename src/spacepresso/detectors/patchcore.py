@@ -5,12 +5,6 @@ Roth et al., *Towards Total Recall in Industrial Anomaly Detection* (CVPR 2022).
 Training-free in the gradient sense: extract patch features from the
 defect-free images, subsample them to a coreset, and score a test patch by its
 distance to the nearest bank entry.
-
-Ported from ``models/patchcore_baseline_v2.py`` (1,571 lines). Everything that
-was not PatchCore — the dataset scanner, the codec, the metric, the backbone
-tables, the run-id hashing, the submission writer, the ablation appender —
-moved to :mod:`spacepresso.core` and :mod:`spacepresso.backbones`, which is
-what the other 15 modules were importing this file for.
 """
 
 from __future__ import annotations

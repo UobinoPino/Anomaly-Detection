@@ -1,10 +1,4 @@
-"""Building blocks shared by the segmentation-style detectors.
-
-DRAEM, TextAD and TransFusion all want a U-Net and the same two losses. Having
-TextAD import them from DRAEM would put one detector on top of another, which
-is the coupling this refactor exists to remove — so they live here, below all
-three.
-"""
+"""Building blocks shared by the segmentation-style detectors."""
 
 from __future__ import annotations
 

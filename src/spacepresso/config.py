@@ -1,22 +1,9 @@
-"""Run configuration.
-
-There used to be 14 ``RunConfig`` dataclasses and 14 ``make_run_id``
-functions, one per detector, each re-declaring ``data_root``, ``report_dir``,
-``seed``, ``num_workers``, ``input_size``, ``tta``, ``only_classes``,
-``skip_eval``, ``run_tag`` … and each hashing a hand-maintained subset of them
-into the run id.
-
-The split here is the one that was implicit in all 14:
+"""Run configuration, split in two.
 
 * :class:`RuntimeConfig` — where things live and how hard to push the machine.
   Changing any of it must **not** change the result, so none of it enters the
   run-id digest.
 * :class:`DetectorConfig` — the science. Every field is part of the digest.
-
-That separation is the whole reason the digest is now trustworthy: previously
-``num_workers`` was excluded from some detectors' fingerprints and included in
-others', so two runs of the same experiment could land in different
-directories.
 """
 
 from __future__ import annotations
@@ -90,9 +77,7 @@ class DetectorConfig:
 
     Fields declared here are common to all detectors *and* affect results, so
     they are part of the fingerprint. Subclasses add their own; the default
-    :meth:`fingerprint` picks up every field automatically, which is why
-    adding a hyperparameter no longer means remembering to add it to a
-    hand-written hash dict.
+    :meth:`fingerprint` picks up every field automatically.
     """
 
     input_size: int = 224
@@ -108,12 +93,7 @@ class DetectorConfig:
 
     # ── identity ─────────────────────────────────────────────────────────
     def fingerprint(self) -> dict[str, Any]:
-        """The result-determining settings, hashed into the run id.
-
-        Override to exclude a field that provably does not change the output
-        (a chunk size, say) — but the default of "everything" is the safe one,
-        and was not what the old per-detector hash dicts did.
-        """
+        """The result-determining settings, hashed into the run id."""
         return {f.name: getattr(self, f.name) for f in fields(self)}
 
     def slug_parts(self) -> list[str]:

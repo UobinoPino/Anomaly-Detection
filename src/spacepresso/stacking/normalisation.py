@@ -46,13 +46,7 @@ SCOPES: tuple[Scope, ...] = (
 
 
 def rank_transform(values: npt.NDArray) -> npt.NDArray[np.float32]:
-    """Replace values by their rank, scaled to [0, 1].
-
-    Ties are broken by original position (``kind="stable"``), which matters
-    for the large constant regions these score maps contain: a random
-    tie-break would inject noise into exactly the pixels the metric is most
-    sensitive to.
-    """
+    """Replace values by their rank, scaled to [0, 1]; ties break stably."""
     flat = np.asarray(values).ravel()
     order = np.argsort(flat, kind="stable")
     ranks = np.empty(flat.size, dtype=np.float32)
@@ -104,10 +98,6 @@ def rank_normalise(
         views: per-image view indices, for ``per_class_view``.
         inplace: overwrite ``scores``. These arrays are gigabytes for a real
             run, so the stacker uses this; copying is the safer default.
-
-    The original had six separate functions for this — ``*_global_*``,
-    ``*_per_class_*``, ``*_per_class_view_*``, each once for validation and
-    once for test, with subtly different tie handling.
     """
     if scope == "none":
         return scores

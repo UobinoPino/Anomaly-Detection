@@ -27,7 +27,7 @@ src/spacepresso/
   stacking/      one configurable stacker
   runner/        the experiment loop and the CLI
   analysis/      spatial priors, pre-submission checks
-configs/         YAML configs, replacing the old shell launchers
+configs/         YAML run configurations
 tests/           unit, architecture and end-to-end tests
 ```
 
@@ -96,7 +96,7 @@ uv run spacepresso run patchcore \
     --run-tag my-run
 ```
 
-Or from a config file, which is what the old launchers become:
+Or from a config file:
 
 ```bash
 uv run spacepresso run --config configs/detectors/patchcore-dinov2.yaml

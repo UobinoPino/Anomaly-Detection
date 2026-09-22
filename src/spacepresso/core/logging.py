@@ -1,14 +1,7 @@
 """Run logging.
 
-Replaces the ``Tee`` class that appeared in 23 files and swapped out the
-process-wide ``sys.stdout``. That approach meant any library code calling
-``print()`` ended up in the run log, which is how ``PatchCore.fit`` came to own
-its own progress reporting — and it made anything that captured stdout
-(pytest, notebooks, a subprocess wrapper) interact badly with a training run.
-
-Library code now calls ``get_logger(__name__).info(...)``. The runner installs
-a handler that writes to both the console and ``<run_dir>/run_log.txt``, which
-reproduces the old behaviour without the global mutation.
+Library code calls ``get_logger(__name__).info(...)``. The runner installs a
+handler that writes to both the console and ``<run_dir>/run_log.txt``.
 """
 
 from __future__ import annotations
@@ -68,10 +61,7 @@ def setup_logging(level: int = logging.INFO) -> logging.Logger:
 
 @contextmanager
 def run_log(path: Path, level: int = logging.INFO) -> Iterator[logging.Logger]:
-    """Mirror everything logged inside the block into ``path``.
-
-    The direct replacement for ``with tee_to(run_dir / "run_log.txt"):``.
-    """
+    """Mirror everything logged inside the block into ``path``."""
     logger = setup_logging(level)
     path.parent.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(path, mode="w", encoding="utf-8")
@@ -87,13 +77,13 @@ def run_log(path: Path, level: int = logging.INFO) -> Iterator[logging.Logger]:
 
 
 def log_section(logger: logging.Logger, title: str, char: str = "=") -> None:
-    """A banner. The old ``hr()``, which existed in 23 copies."""
+    """A banner line around a title."""
     rule = char * _RULE_WIDTH
     logger.info("\n%s\n  %s\n%s", rule, title, rule)
 
 
 def log_subsection(logger: logging.Logger, title: str) -> None:
-    """A minor heading. The old ``sub()``."""
+    """A minor heading."""
     logger.info("\n--- %s ---", title)
 
 

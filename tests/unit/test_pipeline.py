@@ -75,8 +75,6 @@ def test_tta_augmentation_counts(mode, expected):
 
 
 def test_tta_inverts_its_augmentations():
-    """A scorer that returns a spatially distinctive map must come back in the
-    original orientation, or the averaging blurs across flips."""
     marker = torch.zeros(1, 3, 8, 8)
     marker[0, :, 0, 0] = 1.0
 

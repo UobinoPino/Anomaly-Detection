@@ -1,9 +1,4 @@
-"""Combining several detectors into one submission.
-
-One configurable stacker, replacing the six forked programs
-(``xgboost_stacker_v3`` … ``v8``, ``log_stacker_v2``, ``logreg_stacker``,
-``ensemble_tier0``) that between them ran to ~17,500 lines.
-"""
+"""Combining several detectors into one submission."""
 
 from spacepresso.stacking.calibration import Calibrator, fit_calibrator
 from spacepresso.stacking.crossval import (

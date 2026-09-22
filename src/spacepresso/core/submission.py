@@ -1,8 +1,4 @@
-"""Reading and writing ``submission.csv``.
-
-One writer (was: 16 copies of ``write_submission``) and one reader (was: 8
-copies of ``load_submission``, 4 variants).
-"""
+"""Reading and writing ``submission.csv``."""
 
 from __future__ import annotations
 
@@ -140,12 +136,7 @@ def load_submission(path: Path) -> dict[str, str]:
 def load_submission_matrices(
     path: Path, ids: Iterable[str] | None = None
 ) -> dict[str, npt.NDArray[np.uint8]]:
-    """Read a submission and decode it to uint8 matrices.
-
-    ``ids`` restricts the decode to a subset, which matters: a full submission
-    is ~thousands of 224x224 maps and decoding all of them to float32 is where
-    the stacker used to spend its memory budget.
-    """
+    """Read a submission and decode it to uint8 matrices."""
     payloads: Mapping[str, str] = load_submission(path)
     wanted = set(ids) if ids is not None else None
     return {

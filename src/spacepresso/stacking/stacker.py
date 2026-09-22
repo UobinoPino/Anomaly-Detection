@@ -1,14 +1,7 @@
 """The stacker: fit per-class models over several detectors, then fuse.
 
-Replaces ``xgboost_stacker_v3`` … ``v8``, ``log_stacker_v2``,
-``logreg_stacker`` and ``ensemble_tier0`` — about 17,500 lines of forks of one
-another. Each new version was a full copy of the previous file with a few
-hundred lines changed, and ``v8`` additionally imported roughly sixty symbols
-back out of ``v6`` and shadowed several of them.
-
-What actually varied between those versions is now configuration: which
-estimator, which features, which rank-normalisation scope, which
-cross-validation grouping, whether to tune.
+Estimator, features, rank-normalisation scope, cross-validation grouping and
+tuning are all configuration.
 
 Pipeline:
 
@@ -220,8 +213,8 @@ def _tune(
     """Optuna search against the pooled out-of-fold AP.
 
     Tuning against the same pooled metric the leaderboard uses, under the same
-    grouped cross-validation, is the whole point — the earlier stackers tuned
-    against per-image AP and then wondered why the leaderboard disagreed.
+    grouped cross-validation, keeps model selection aligned with the
+    leaderboard; per-image AP would not.
     """
     try:
         import optuna

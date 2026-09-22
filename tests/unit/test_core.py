@@ -48,8 +48,6 @@ def test_only_validation_records_carry_masks(dataset):
 
 
 def test_scan_raises_on_a_missing_root(tmp_path):
-    """The original printed a message and returned [], so a mistyped path
-    produced a successful run that scored nothing."""
     with pytest.raises(FileNotFoundError):
         scan_dataset(tmp_path / "nope")
 

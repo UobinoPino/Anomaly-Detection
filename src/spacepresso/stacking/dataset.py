@@ -4,10 +4,6 @@ Each detector run writes ``local_predictions.npz`` (validation scores plus
 ground-truth masks) and ``submission.csv`` (test scores, q8rle-encoded). The
 stacker needs those aligned: the same images, in the same order, at the same
 resolution, across every method.
-
-Alignment is on the intersection of image IDs. A method that scored fewer
-images — because it crashed on a class, or was run with ``--only-classes`` —
-restricts the whole set rather than being silently padded.
 """
 
 from __future__ import annotations
@@ -166,14 +162,7 @@ def load_validation(
 def load_test_scores(
     submission_paths: Sequence[Path], image_ids: Sequence[str] | None = None
 ) -> tuple[list[str], npt.NDArray[np.uint8]]:
-    """Decode several submissions onto a common set of image IDs.
-
-    Returns ``(ids, scores)`` with ``scores`` shaped ``(N, H, W, M)`` in
-    **uint8**. The test set is an order of magnitude larger than validation,
-    and holding it as float32 is what made the original stacker's memory
-    profile the constraint it was. The q8rle payload is 8-bit anyway, so
-    decoding to float gains nothing but four times the memory.
-    """
+    """Decode several submissions onto a common set of image IDs."""
     if not submission_paths:
         raise ValueError("load_test_scores() needs at least one submission")
 

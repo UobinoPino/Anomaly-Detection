@@ -1,12 +1,6 @@
 """The backbone interface.
 
-Replaces ``FeatureExtractor``, which was one class trying to be two models:
-it branched on ``self.kind`` at every call and left half its attributes set to
-``None`` in each mode (``self.stem = self.layer1 = self.layer2 = None`` for
-DINO backbones, ``self.dino = self.info = None`` for ResNets). Any caller
-reading an attribute had to know which mode it was in.
-
-There is now one protocol with two implementations. A caller asks for
+One protocol, two implementations. A caller asks for
 ``backbone(x, layers=(3, 6, 9, 11))`` and gets ``{layer: (B, C, H', W')}``
 back, whichever family it is.
 """

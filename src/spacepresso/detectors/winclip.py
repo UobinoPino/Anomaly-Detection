@@ -119,8 +119,6 @@ class WinCLIP(Detector[WinCLIPConfig]):
         model.eval()
         for parameter in model.parameters():
             parameter.requires_grad_(False)
-        # CLIP's learned temperature. Reusing it keeps the zero-shot softmax
-        # calibrated the way the model was trained.
         scale = float(model.logit_scale.detach().exp().item())
         return model, open_clip.get_tokenizer(self.config.model_name), scale
 

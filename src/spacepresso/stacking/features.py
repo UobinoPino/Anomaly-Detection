@@ -4,14 +4,6 @@ The stacker learns a function from *several detectors' scores at a pixel* to
 *is this pixel anomalous*. This module turns a set of aligned score maps into
 the feature matrix that function is fitted on.
 
-The original ``featurize_image`` was a 300-line chain of ``if cfg.use_x:``
-blocks that appended to two parallel lists — one of planes, one of names —
-which had to stay in lockstep or the learned model silently mislabelled its
-own features. Here each feature family is a small function that yields
-``(name, plane)`` pairs, and they are composed by a registry. Adding a feature
-is adding a function; the names cannot drift from the planes because they are
-produced together.
-
 Feature families, grouped by what they know:
 
 * **per-method** — what one detector says here, and in a neighbourhood.
@@ -49,13 +41,7 @@ Family = Callable[["FeatureContext"], Iterator[tuple[str, Plane]]]
 
 @dataclass
 class FeatureConfig:
-    """Which feature families to build.
-
-    Defaults follow the configuration that the v6/v8 stackers converged on
-    after their ablations: raw score and per-image rank per method, one
-    Gaussian scale, one window mean, the cross-method statistics, spatial
-    coordinates and priors, and the identity one-hots.
-    """
+    """Which feature families to build."""
 
     # per-method
     raw_score: bool = True
@@ -370,11 +356,7 @@ def feature_names(
     all_classes: Sequence[str] = (),
     shape: tuple[int, int] = (8, 8),
 ) -> list[str]:
-    """The feature names this config produces, without building real features.
-
-    Used to label a trained model and to validate that a saved model matches
-    the features it is about to be applied to.
-    """
+    """The feature names this config produces, without building real features."""
     dummy = [np.zeros(shape, dtype=np.float32) for _ in range(n_methods)]
     _, names = featurize_image(
         dummy,

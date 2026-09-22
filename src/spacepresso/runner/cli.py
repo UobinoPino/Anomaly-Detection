@@ -1,9 +1,5 @@
 """The command-line interface.
 
-One entry point with subcommands, replacing 32 shell launchers and ~700
-hand-written ``add_argument`` calls (26–58 per script, each then hand-mapped
-field by field into a ``RunConfig``).
-
 Detector flags are **derived from the config dataclass**, so adding a
 hyperparameter means adding a field — not adding a field, an argument, and a
 line in the constructor call, and remembering to add it to the run-id hash.

@@ -1,11 +1,5 @@
 """The backbone catalogue: names, dimensions, strides, short tags.
 
-These tables were split across two files — the DINO specs in
-``exploit_dataset/dinov3_loader.py`` (a *dataset-analysis* directory) and the
-derived channel maps in ``models/patchcore_baseline_v2.py`` (a *detector*) —
-so anything wanting to know how many channels ``dinov2_vitb14_reg`` block 9
-has had to import both a detector and an analysis script.
-
 Pure data and pure functions. No torch import, so the tables can be consulted
 during config validation before any model is built.
 """
@@ -225,12 +219,7 @@ def short_tag(name: str) -> str:
 
 
 def validate_input_size(name: str, input_size: int) -> None:
-    """Fail fast when the input size is not a multiple of the patch stride.
-
-    This check used to live inline in each detector's ``main()`` — and in
-    several it was missing, so a ViT would raise deep inside the forward pass
-    an hour into a run instead of at argument-parsing time.
-    """
+    """Fail fast when the input size is not a multiple of the patch stride."""
     patch = patch_size_of(name)
     if patch is None:
         return

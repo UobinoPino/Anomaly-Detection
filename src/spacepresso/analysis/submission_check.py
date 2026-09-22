@@ -11,8 +11,6 @@ quantisation and encoding step:
   ranking even when each class looks fine on its own;
 * an implausibly high positive fraction — everything looks anomalous, which
   scores near the base rate.
-
-Ported from ``exploit_dataset/diagnose_submission.py``.
 """
 
 from __future__ import annotations

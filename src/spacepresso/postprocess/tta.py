@@ -1,10 +1,5 @@
 """Test-time augmentation.
 
-Every detector shipped its own ``score_batch``: flip the input, score it, flip
-the score map back, average. Six copies of ``_score_one_pass`` and six of
-``score_batch``, all the same loop with a different single-pass function
-inside it.
-
 The loop is the reusable part, so here it takes the single-pass function as an
 argument. A detector implements "score one batch, no augmentation" and gets
 every TTA mode for free.
@@ -35,16 +30,13 @@ def _transforms(
 ]:
     """Yield ``(forward, inverse)`` pairs for a TTA mode.
 
-    ``forward`` maps the input image, ``inverse`` maps the resulting score map
-    back to the original orientation. Flips are their own inverse; rotations
-    are not, which is why these come in pairs.
-
     ``d4`` is the full dihedral group of the square: the four rotations, and
     those same four composed with a horizontal flip. That gives eight
     *distinct* transforms. Enumerating it as "the flips, plus the rotations"
     is the tempting mistake — a horizontal and a vertical flip together are a
     180-degree rotation, so that list both repeats one element and omits the
     two diagonal reflections.
+
     """
     identity = lambda t: t  # noqa: E731
     hflip = lambda t: torch.flip(t, dims=[-1])  # noqa: E731

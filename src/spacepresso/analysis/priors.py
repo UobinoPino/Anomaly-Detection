@@ -9,11 +9,6 @@ also a real risk: a strong prior lets the stacker score by position rather
 than by appearance and score well on validation while failing on a test set
 whose defects sit elsewhere. Hence the reported ``centre_bias`` figure, which
 says how concentrated the prior is and therefore how much to trust it.
-
-Ported from ``exploit_dataset/compute_priors.py``, which wrote a different
-file layout than the stacker's loader expected — so the spatial-prior feature
-was silently all zeros unless the files were renamed by hand. Both ends now
-agree on ``06_heat_<class>.npy``.
 """
 
 from __future__ import annotations

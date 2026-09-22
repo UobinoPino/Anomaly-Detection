@@ -1,11 +1,5 @@
 """Project path resolution.
 
-Replaces the ``PROJECT_ROOT = Path("/work/u10813429/anomaly-detection")``
-constant, which was hardcoded in 20 files and pinned to three different
-machines at once: an HPC scratch path, a ``/workspace`` container path, and a
-WSL path under ``/mnt/c/Users/...``. A clone could not run anywhere without
-editing source.
-
 Resolution order, first hit wins:
 
 1. an explicit argument (``--data-root`` on the CLI),

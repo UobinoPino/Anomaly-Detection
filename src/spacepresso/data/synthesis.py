@@ -1,17 +1,7 @@
 """Synthetic anomaly generation.
 
-Three detectors train on artificial defects painted onto normal images, and
-each shipped its own copy of the machinery: DRAEM (Perlin-masked texture
-blending), CutPaste (rectangular patch transplants), and GLASS (Perlin masks
-again, on the GPU). The Perlin implementation in particular existed twice, in
-NumPy and in torch, with different octave conventions.
-
 One NumPy implementation lives here, plus the torch one GLASS needs for
 on-device batch synthesis.
-
-Determinism: every function takes an explicit ``rng``. The originals reached
-for a module-level generator that ``worker_init_fn`` reseeded, which meant
-augmentation diversity depended on a global whose lifetime nobody owned.
 """
 
 from __future__ import annotations
@@ -169,12 +159,11 @@ def cutpaste(
     aspect_ratio: tuple[float, float] = (0.3, 3.3),
     jitter: float = 0.1,
 ) -> npt.NDArray:
-    """Copy a random rectangular region and paste it elsewhere.
-
-    The transplanted patch is real texture from the same image, so the
+    """The transplanted patch is real texture from the same image, so the
     classifier cannot win by detecting "this doesn't look like the material" —
     it has to notice the discontinuity at the seam, which is what a real
     defect looks like.
+
     """
     height, width = image.shape[:2]
     area = height * width * rng.uniform(*area_ratio)

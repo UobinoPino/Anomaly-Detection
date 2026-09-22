@@ -1,9 +1,4 @@
-"""The q8rle codec.
-
-This is the function that writes the leaderboard submission, and before the
-refactor it existed in 25 places across 8 variants. It gets the most tests of
-anything in the project.
-"""
+"""The q8rle codec."""
 
 from __future__ import annotations
 
@@ -39,10 +34,9 @@ def test_constant_image_encodes_to_one_run():
 
 
 def test_empty_body_decodes_to_zeros():
-    """The guard that ``models/patchcore_baseline.py``'s decoder was missing.
-
-    A payload with a header and no runs is well-formed and means "all zeros".
+    """A payload with a header and no runs is well-formed and means "all zeros".
     That decoder raised on it instead.
+
     """
     assert np.array_equal(
         codec.decode_to_uint8("q8rle 4 5"), np.zeros((4, 5), np.uint8)

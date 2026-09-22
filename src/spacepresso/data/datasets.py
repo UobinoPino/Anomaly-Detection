@@ -1,10 +1,4 @@
-"""Torch datasets and loaders over :class:`~spacepresso.core.records.ImageRecord`.
-
-There was one ``InferenceDataset`` per detector — six exact clones of one
-version and three of another, plus five copies of ``TrainGoodDataset`` — all
-differing only in whether they returned a mask. There is now one dataset that
-takes a flag, and one loader factory.
-"""
+"""Torch datasets and loaders over :class:`~spacepresso.core.records.ImageRecord`."""
 
 from __future__ import annotations
 
@@ -61,12 +55,7 @@ class SpacepressoDataset(Dataset):
 
 
 def seed_worker(worker_id: int) -> None:
-    """Give each dataloader worker a distinct, run-reproducible seed.
-
-    The previous ``worker_init_fn`` (10 copies) seeded every worker from the
-    same base, so augmentation-heavy detectors — CutPaste, DRAEM, GLASS — drew
-    correlated "random" anomalies across workers.
-    """
+    """Give each dataloader worker a distinct, run-reproducible seed."""
     seed = torch.initial_seed() % 2**32
     np.random.seed(seed)
     random.seed(seed)

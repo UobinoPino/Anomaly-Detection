@@ -1,17 +1,9 @@
 """The layering rules, enforced.
 
-The original repo's central problem was that a *detector script*
-(``patchcore_baseline_v2.py``) had become the standard library: 15 modules
-imported it, and it in turn imported ``multiview_consensus``, which imported
-back into it. Both sides worked around the resulting cycle with function-local
-imports.
-
 Structure decays quietly, so the rules that prevent that recurring are tests
 rather than prose:
 
   core  <-  data, backbones  <-  detectors, postprocess  <-  stacking, runner
-
-Every rule below is one that the original violated.
 """
 
 from __future__ import annotations
@@ -101,11 +93,7 @@ def test_core_imports_nothing_from_the_project():
 
 
 def test_no_detector_imports_another_detector():
-    """Two detectors may share machinery, but only through a shared module.
-
-    In the original, seven detectors imported PatchCore to get ``ImageRecord``
-    and the q8rle codec.
-    """
+    """Two detectors may share machinery, but only through a shared module."""
     shared = {"base", "blocks", "coreset", "training", "prompts", "__init__"}
     for module in _modules():
         if _layer_of(module) != "detectors" or module.stem in shared:
@@ -124,8 +112,6 @@ def test_no_detector_imports_another_detector():
 
 
 def test_there_are_no_sys_path_hacks():
-    """18 files opened with ``sys.path.insert(0, ...)`` because there was no
-    package. There is one now."""
     offenders = [
         m.relative_to(SRC) for m in _modules() if "sys.path.insert" in m.read_text()
     ]
@@ -133,9 +119,6 @@ def test_there_are_no_sys_path_hacks():
 
 
 def test_no_module_level_imports_are_deferred_to_break_cycles():
-    """Function-local imports of project modules are how the original hid its
-    import cycle. A few are legitimate (optional heavy dependencies), so only
-    intra-project ones are checked."""
     offenders: list[str] = []
     for module in _modules():
         tree = ast.parse(module.read_text())
@@ -159,11 +142,9 @@ def test_no_module_level_imports_are_deferred_to_break_cycles():
 
 
 def test_no_hardcoded_absolute_paths():
-    """PROJECT_ROOT was hardcoded in 20 files, to three different machines."""
     import re
 
-    # String *literals* only: the paths module documents the old hardcoded
-    # roots in its docstring, which is history rather than a dependency.
+    # String literals only; docstrings and comments are not paths.
     pattern = re.compile(r"^/(work|workspace|home|mnt|Users)/")
     offenders: list[str] = []
     for module in _modules():
@@ -181,10 +162,7 @@ def test_no_hardcoded_absolute_paths():
 
 
 def test_library_code_does_not_print():
-    """``print()`` in library code is how the Tee/sys.stdout swap came about.
-
-    The CLI prints its results, which is what a CLI is for.
-    """
+    """The CLI prints its results, which is what a CLI is for."""
     offenders: list[str] = []
     for module in _modules():
         if module.stem in ("cli",):

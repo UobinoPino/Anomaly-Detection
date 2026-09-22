@@ -1,16 +1,4 @@
-"""Spatial post-processing of score maps.
-
-Three operations that ran inside the stacker forks, with two to four slightly
-different copies each:
-
-* **Small-component suppression** — real defects are contiguous; isolated hot
-  pixels are usually detector noise, and a handful of them can cost a lot of
-  precision at the top of a pooled ranking.
-* **Spatial priors** — per-class heatmaps of where anomalies historically
-  occur, produced by ``spacepresso.analysis.priors``.
-* **Within-image ranking** — replace scores by their rank inside the image, to
-  remove per-image scale before fusing detectors.
-"""
+"""Spatial post-processing of score maps."""
 
 from __future__ import annotations
 
@@ -186,11 +174,7 @@ def apply_spatial_prior(
     *,
     weight: float = 0.5,
 ) -> npt.NDArray[np.float32]:
-    """Blend a score map with a per-class location prior.
-
-    ``weight`` is the prior's share: 0 leaves the score untouched, 1 replaces
-    it with the prior. The prior is resized to the score's resolution.
-    """
+    """Blend a score map with a per-class location prior."""
     scores = np.asarray(score, dtype=np.float32)
     if weight <= 0:
         return scores
@@ -201,12 +185,11 @@ def apply_spatial_prior(
 def within_image_rank(
     score: npt.NDArray[np.floating],
 ) -> npt.NDArray[np.float32]:
-    """Replace each pixel by its rank within the image, scaled to [0, 1].
-
-    Removes per-image scale entirely, which is what you want before averaging
+    """Removes per-image scale entirely, which is what you want before averaging
     several detectors whose raw score ranges are incomparable — and is
     exactly what you do *not* want as the final submission transform, since it
     destroys the between-image ordering the pooled metric measures.
+
     """
     flat = np.asarray(score, dtype=np.float32).ravel()
     order = np.argsort(flat, kind="stable")

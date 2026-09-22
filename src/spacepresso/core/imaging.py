@@ -38,13 +38,7 @@ def _gaussian_kernel_1d(sigma: float, radius: int) -> npt.NDArray[np.float32]:
 def gaussian_smooth(
     score: npt.NDArray[np.floating], sigma: float = 1.5
 ) -> npt.NDArray[np.float32]:
-    """Separable Gaussian blur with reflect padding.
-
-    ``sigma <= 0`` is a no-op. Prefers ``scipy.ndimage`` when available (same
-    result, roughly an order of magnitude faster than the previous
-    ``np.apply_along_axis`` implementation, which built one Python-level
-    closure call per row and per column).
-    """
+    """Separable Gaussian blur with reflect padding."""
     arr = np.asarray(score, dtype=np.float32)
     if sigma <= 0:
         return arr
@@ -123,11 +117,10 @@ def calibrate_to_unit(
     lo_pct: float = 1.0,
     hi_pct: float = 99.5,
 ) -> tuple[float, float]:
-    """Find the global ``(lo, hi)`` percentile pair used to map scores to [0, 1].
-
-    Computed once over *all* test score maps so the mapping is global — a
+    """Computed once over *all* test score maps so the mapping is global — a
     per-image mapping would destroy the cross-image ordering the pooled
     leaderboard metric measures.
+
     """
     flat = np.concatenate([np.asarray(s, np.float32).ravel() for s in scores])
     if flat.size == 0:

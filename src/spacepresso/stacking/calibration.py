@@ -13,18 +13,7 @@ Two calibrators:
 * **platt** — a logistic fit. Two parameters, so far less prone to
   overfitting on small out-of-fold sets.
 
-A note on the downsampling
---------------------------
-Isotonic regression on tens of millions of pixels is slow and memory-hungry,
-so the fit is done on a subsample. The v6 stacker capped the *total* sample
-size and filled it mostly with negatives, because negatives outnumber
-positives 100:1 — so a 200k-row cap gave roughly 2,000 positives and a step
-function with almost no resolution in the range that matters. The v8 stacker
-fixed this by stratifying, and did so by shadowing v6's function from its own
-module — which worked only because v6's copy happened to be called nowhere
-that v8 reached.
-
-There is now one implementation, and it stratifies.
+Large fits are downsampled with positive-preserving stratification.
 """
 
 from __future__ import annotations

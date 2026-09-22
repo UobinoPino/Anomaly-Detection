@@ -103,13 +103,7 @@ class TextADConfig(DetectorConfig):
 
 
 class _SynthesisDataset(Dataset):
-    """Normal images with class-appropriate defects painted on.
-
-    Images are decoded once in ``__init__`` and cached as uint8 arrays. On
-    Linux the dataloader workers fork and inherit that cache copy-on-write, so
-    per-epoch decode cost goes to zero — which matters because the synthesis
-    itself is already the expensive part of each item.
-    """
+    """Normal images with class-appropriate defects painted on."""
 
     def __init__(
         self,
@@ -175,8 +169,7 @@ class TextAD(Detector[TextADConfig]):
         self._masks: torch.Tensor | None = None
 
     def _build_net(self) -> nn.Module:
-        # Shares DRAEM's U-Net, which is the same architecture at a different
-        # depth — one implementation, not two.
+        # The shared U-Net, truncated to the configured depth.
         net = UNet(3, 2, self.config.base_channels)
         net.downs = nn.ModuleList(list(net.downs)[: self.config.depth])
         net.ups = nn.ModuleList(list(net.ups)[-self.config.depth :])

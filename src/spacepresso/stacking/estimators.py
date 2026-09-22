@@ -1,11 +1,5 @@
 """The models the stacker can fit, behind one interface.
 
-``xgboost_stacker_v*.py`` and ``log*_stacker*.py`` were separate programs —
-about 4,300 lines between them — that differed only in which estimator they
-called. They each had their own ``fit_per_class``, ``fuse_test``,
-``tune_global``, ``tune_per_class``, ``pooled_cv_score_one_class`` and
-``loao_oof_one_class``, all near-clones.
-
 The estimator is a parameter, so there is one stacker with a ``--estimator``
 flag.
 """
@@ -175,13 +169,7 @@ DEFAULT_PARAMS: dict[EstimatorName, dict[str, Any]] = {
 
 
 def default_params(name: EstimatorName, *, device: str = "cpu") -> dict[str, Any]:
-    """Default hyperparameters, with the device applied for XGBoost.
-
-    The v8 stacker set the device by mutating ``xgboost_stacker_v6``'s
-    module-level ``DEFAULT_XGB_PARAMS`` dict in place, so that "every
-    ``_make_xgb`` call site" would pick it up. That made the device a hidden
-    piece of cross-module global state. It is now an argument.
-    """
+    """Default hyperparameters, with the device applied for XGBoost."""
     params = dict(DEFAULT_PARAMS[name])
     if name == "xgboost":
         params["device"] = device

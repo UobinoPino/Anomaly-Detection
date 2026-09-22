@@ -1,10 +1,5 @@
 """DINOv2 and DINOv3 backbones.
 
-Ported from ``exploit_dataset/dinov3_loader.py``, whose own docstring called it
-"the single source of truth" for backbones — while sitting in the
-dataset-analysis directory, which is why seven detectors under ``models/``
-carried a ``sys.path`` hack and still failed to import it from a clean clone.
-
 Three loading strategies, tried in order for DINOv3:
 
 1. ``torch.hub`` against a local clone of the ``facebookresearch/dinov3`` repo
@@ -73,13 +68,7 @@ Could not load {name}. Two options:
 # Loading strategies
 # ─────────────────────────────────────────────────────────────────────────────
 def _dinov3_repo_dir() -> Path | None:
-    """Locate a local clone of the DINOv3 repo.
-
-    Only ``$DINOV3_REPO`` and the user's home directory are consulted. The
-    original also probed ``/work/u10813429/dinov3_repo`` and
-    ``/workspace/dinov3_repo`` — two specific machines, hardcoded into a
-    library function.
-    """
+    """Locate a local clone of the DINOv3 repo."""
     env = os.environ.get("DINOV3_REPO")
     candidates = [Path(env)] if env else []
     candidates += [Path.home() / "dinov3_repo", Path.home() / "dinov3"]

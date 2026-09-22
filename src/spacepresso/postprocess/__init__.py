@@ -1,10 +1,4 @@
-"""Score-map post-processing: TTA, per-view calibration, spatial filters.
-
-Everything here operates on score maps alone. Nothing imports a detector —
-which is what broke the ``patchcore_baseline_v2`` ⇄ ``multiview_consensus``
-cycle: the per-view calibrator now takes a scoring callable rather than a live
-``PatchCore`` instance.
-"""
+"""Score-map post-processing: TTA, per-view calibration, spatial filters."""
 
 from spacepresso.postprocess.multiview import (
     ViewStats,

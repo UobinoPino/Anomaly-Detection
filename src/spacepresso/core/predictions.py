@@ -1,17 +1,5 @@
 """Writing raw per-pixel predictions for the stacker to consume.
 
-Replaces ``models/local_preds_saver.py`` and ``models/test_preds_saver.py``,
-which were two near-identical accumulators — and, incidentally, a module named
-``test_*`` that pytest would try to import as a test.
-
-Both produced the same npz layout and both held **every score map and every
-mask in RAM as Python lists** before calling ``np.stack``, so peak memory was
-twice the size of the finished array. At 224x224 float32 over a few thousand
-validation views that is several gigabytes of avoidable pressure during the
-most memory-hungry phase of a run. This writer streams each map to a raw
-append-only file and memory-maps it at save time, so peak RSS is one score map
-regardless of dataset size.
-
 Output keys (unchanged, so existing ``.npz`` files still load):
 
 ``local_predictions.npz``
@@ -169,10 +157,9 @@ class PredictionWriter:
         self._n += 1
 
     def _sanitise(self, score: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
-        """Replace NaN/inf with the image's finite min/max.
-
-        Rank-based AP only cares about ordering among finite values, so this
+        """Rank-based AP only cares about ordering among finite values, so this
         preserves the metric while keeping the array stackable downstream.
+
         """
         finite = np.isfinite(score)
         if not finite.all():
@@ -261,8 +248,6 @@ class PredictionWriter:
                 self._n_constant,
                 self._n,
             )
-        # Tail-saturation heuristic: a flat top 0.1% means the score was
-        # clipped upstream, which is the single most common integration bug.
         top = float(
             np.percentile(np.asarray(scores[:: max(1, self._n // 64) or 1]), 99.9)
         )

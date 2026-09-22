@@ -8,17 +8,6 @@ pools every pixel of every image into one ranking, so it notices a great deal.
 
 This module rescales each view onto a common range using statistics gathered
 from the *normal* training images of that view.
-
-What changed in the refactor
-----------------------------
-The original ``models/multiview_consensus.py`` took a live ``PatchCore``
-instance as its first argument and reached into ``pc.cfg.input_size`` and
-``pc._score_one_pass``. ``patchcore_baseline_v2`` in turn imported this
-module, so the two formed an import cycle that both sides worked around with
-function-local imports — five of them.
-
-It now depends on a callable instead. Anything that can score a batch can be
-calibrated, and the cycle is gone.
 """
 
 from __future__ import annotations

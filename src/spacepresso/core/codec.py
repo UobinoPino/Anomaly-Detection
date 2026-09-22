@@ -1,4 +1,4 @@
-"""The q8rle submission codec — one implementation, project-wide.
+"""The q8rle submission codec.
 
 Format::
 
@@ -8,16 +8,7 @@ Values are 8-bit (0–255). Runs are laid out in **column-major** order: the
 matrix is transposed, flattened, and run-length encoded. An all-constant image
 therefore encodes to a single run.
 
-Why this module exists
-----------------------
-Before the refactor this codec existed in 25 places: 15 copies of the encoder
-across 3 variants, and 10 copies of the decoder across 5 variants. They were
-*almost* all equivalent — but ``models/patchcore_baseline.py`` shipped a
-decoder with no empty-body guard, so a submission row for an image encoded to
-zero runs raised instead of decoding to zeros.
-
-This is the function that writes the leaderboard submission. It gets one
-implementation and a round-trip test.
+This writes the leaderboard submission, so it has a round-trip test suite.
 """
 
 from __future__ import annotations

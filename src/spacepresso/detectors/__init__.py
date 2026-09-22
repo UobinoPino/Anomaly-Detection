@@ -7,12 +7,6 @@ stacker all address them the same way::
 
     cls, config_cls = get_detector("patchcore")
 
-Registration is explicit rather than by import-time side effect: the table
-below is the list, and a detector that is not in it does not exist. That is
-deliberately boring — the previous arrangement, where the set of detectors was
-"whichever ``*_baseline.py`` files happen to be in ``models/``", is how
-``patchcore_baseline.py`` v1 stayed in the tree long after it was dead.
-
 Detectors are imported lazily. Several pull in heavy optional dependencies
 (``transformers`` for WinCLIP and TextAD, ``xgboost`` nowhere here but in the
 stacker), and importing the package should not require all of them.

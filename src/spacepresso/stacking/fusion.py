@@ -1,9 +1,5 @@
 """Non-learned fusion of several detectors.
 
-Replaces ``score_fusion.py``, ``score_fusion2.py`` and ``submit_ensemble.py``.
-No model is fitted: the detectors' scores are put on a common scale and
-combined arithmetically.
-
 Worth keeping alongside the learned stacker for two reasons. It needs no
 validation labels, so it works when a class has none. And it is the baseline
 the stacker has to beat — if a tuned per-class gradient-boosted model does not

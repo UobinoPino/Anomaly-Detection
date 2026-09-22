@@ -12,9 +12,6 @@ Two stages:
 2. **Scoring.** Discard the classifier head and use the fine-tuned encoder as
    a feature extractor, then score exactly as PatchCore does: distance to a
    coreset bank of normal patches.
-
-The original reimplemented the memory bank and the chunked nearest-neighbour
-search; both now come from :mod:`spacepresso.detectors.coreset`.
 """
 
 from __future__ import annotations
@@ -318,8 +315,6 @@ class CutPaste(Detector[CutPasteConfig]):
     def release(self) -> None:
         self.classifier = None
         self.bank = None
-        # The encoder was fine-tuned for this class; rebuild it so the next
-        # class starts from pretrained weights rather than inheriting them.
         self.backbone = build_backbone(
             self.config.backbone, device=self.device, cache=False
         )

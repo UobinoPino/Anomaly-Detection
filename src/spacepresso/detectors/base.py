@@ -6,12 +6,6 @@ this?" (:meth:`Detector.score`) — and nothing else. It does not parse
 arguments, hash run ids, write CSVs, compute AP, print progress banners, or
 decide which classes to run.
 
-All of that used to live inside each detector, in a ``main()`` and a
-``run_one_class()`` that were copy-pasted 14 and 36 times respectively — 12,185
-lines of orchestration, about 27% of the codebase. It now lives once in
-:mod:`spacepresso.runner.experiment`, and a new detector is a subclass plus a
-config dataclass.
-
 Ground-truth masks are deliberately absent from this interface. A detector has
 no business reading the labels it is being evaluated against; the runner loads
 them and computes the metric.
@@ -128,15 +122,7 @@ class Detector(ABC, Generic[ConfigT]):
 
     # ── optional hooks ───────────────────────────────────────────────────
     def release(self) -> None:
-        """Drop per-class state between classes.
-
-        The default frees the CUDA cache. Detectors holding a memory bank, a
-        trained student network or a fitted GMM should delete it here —
-        otherwise eight classes of a large model exhaust GPU memory partway
-        through a run, which is what the scattered ``del student, ae;
-        torch.cuda.empty_cache()`` lines at the end of each ``run_one_class``
-        were working around.
-        """
+        """Drop per-class state between classes."""
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 

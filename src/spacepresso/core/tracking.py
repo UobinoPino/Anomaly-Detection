@@ -1,15 +1,4 @@
-"""Run identity and cross-experiment tracking.
-
-Two things that were duplicated 14 times each with subtly different logic:
-
-* ``make_run_id`` — a timestamped, human-readable, content-hashed run name.
-* ``append_to_ablation_master`` — an append to a CSV whose columns grow as new
-  detectors report new fields.
-
-The run id keeps the original layout (``<stamp>_<slug>_<digest>``) so existing
-``baseline_out/runs/`` directories stay recognisable, but the digest is now
-computed from one canonical place instead of 14 hand-maintained dicts.
-"""
+"""Run identity and cross-experiment tracking."""
 
 from __future__ import annotations
 
@@ -40,9 +29,8 @@ def slugify(text: str) -> str:
 def _canonical(value: Any) -> Any:
     """JSON-safe, order-stable rendering of a config value.
 
-    Sets are sorted, tuples become lists, Paths become strings. Without this
-    the digest depended on dict insertion order and on whether a field held a
-    tuple or a list — two runs with identical settings could hash differently.
+    Sets are sorted, tuples become lists, Paths become strings, so the
+    digest does not depend on insertion order or sequence type.
     """
     if isinstance(value, Mapping):
         return {str(k): _canonical(v) for k, v in sorted(value.items())}
@@ -95,7 +83,7 @@ def append_to_master(master_csv: Path, row: Mapping[str, Any]) -> None:
     """Append one run to the cross-experiment CSV, widening columns as needed.
 
     Rewrites the whole file because the column set grows over time: a new
-    detector reporting ``AP_class_09`` must not shift every earlier row.
+    detector reporting ``AP_class_09`` must not shift the existing rows.
     """
     master_csv.parent.mkdir(parents=True, exist_ok=True)
     existing: list[dict[str, str]] = []

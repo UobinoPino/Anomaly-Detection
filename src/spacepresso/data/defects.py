@@ -1,21 +1,9 @@
 """Class-aware procedural defect synthesis.
 
-Ported from ``exploit_dataset/defect_library.py``, which lived in the
-dataset-analysis directory even though TextAD depended on it at training time.
-
 Eight defect families, each a ``(shape, appearance)`` pair: the shape function
 draws a binary mask, the appearance function paints that region into the
 image. They are always produced together — a synthesis routine that can emit
 an image without its matching mask is a training-label bug waiting to happen.
-
-  scratch        thin straight line, 1-4 px, dark or bright
-  crack          jagged random-walk line, 1-2 px, dark
-  dent           smooth ellipse, darkened with a soft shadow
-  bulge          smooth ellipse, brightened like a specular highlight
-  stain          irregular blob blended with a dark colour
-  fragment       large irregular region replaced with a background tint
-  mold           cluster of small overlapping greenish blobs
-  contamination  scattered small dark dots, pest-damage style
 
 Which families apply to which class is read from
 ``data/anomaly_descriptions.csv`` by keyword. Without the CSV every class
@@ -206,9 +194,6 @@ def _gauss(arr: np.ndarray, sigma: float) -> np.ndarray:
     defect synthesis runs inside the dataloader where that matters. The two
     agree to sub-pixel differences at the boundary (BORDER_REFLECT against
     SciPy's mode="reflect"), which has no effect on the masks.
-
-    The original imported cv2 at module scope and crashed with a NameError
-    when it was absent, despite documenting SciPy as the reference behaviour.
     """
     if arr.dtype != np.float32:
         arr = arr.astype(np.float32)
@@ -352,13 +337,8 @@ def _draw_disks(
 ) -> np.ndarray:
     """Filled disks on a binary canvas, via PIL.
 
-    The original called ``cv2.circle`` here but only imported cv2 inside one
-    other function, so these two shape generators raised ``NameError`` the
-    moment they were selected — which, for a class whose taxonomy included
-    "mold" or "contamination", meant the defect family silently never fired.
-    PIL is already a hard dependency; OpenCV was not.
-
     Out-of-bounds centres are clipped by the draw, as cv2 did.
+
     """
     canvas = Image.new("L", (width, height), 0)
     draw = ImageDraw.Draw(canvas)
@@ -482,14 +462,12 @@ def appearance_stain(
 def appearance_fragment(
     img: np.ndarray, mask: np.ndarray, rng: np.random.Generator
 ) -> np.ndarray:
-    """Replace the masked region with a tinted background colour + noise
-    — simulates a broken-away piece.
-
-    v1.0 took the mean of pixels OUTSIDE the mask (img[outside].mean(axis=0));
+    """v1.0 took the mean of pixels OUTSIDE the mask (img[outside].mean(axis=0));
     that's a fancy-index on a bool mask, which costs ~5 ms at 256×256. v1.1
     uses the global mean — for typical defect sizes (5–15% of pixels) this
     differs by <1% in colour values, and the per-call cost drops to ~50 µs.
-    The downstream noise term dominates either way."""
+    The downstream noise term dominates either way.
+    """
     bg = img.mean(axis=(0, 1))
     bg = np.clip(bg + rng.normal(0, 0.10, 3), 0, 1).astype(np.float32)
     noise = rng.normal(0, 0.05, img.shape).astype(np.float32)
@@ -610,11 +588,6 @@ def inject_defects(
     out = img01.copy()
     for _ in range(n):
         spec = specs[int(rng.integers(0, len(specs)))]
-        # A generator can legitimately draw nothing — a scratch sampled
-        # entirely outside the frame, say. That is a skip, not an error. A
-        # generator that *raises* is a bug, so it is no longer swallowed:
-        # the original caught bare Exception here and silently produced
-        # clean images labelled as defective.
         m = spec.shape_fn(H, W, rng)
         if m.sum() < min_mask_pixels:
             continue

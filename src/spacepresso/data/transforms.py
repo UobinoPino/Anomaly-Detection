@@ -1,9 +1,4 @@
-"""Image and mask preprocessing.
-
-One definition of "how an image becomes a tensor", instead of the ``tx =
-transforms.Compose([...])`` block that was re-typed inside six copies of
-``InferenceDataset`` and five of ``TrainGoodDataset``.
-"""
+"""Image and mask preprocessing."""
 
 from __future__ import annotations
 

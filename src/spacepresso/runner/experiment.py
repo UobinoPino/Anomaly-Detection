@@ -1,13 +1,5 @@
 """The experiment runner — written once, for every detector.
 
-This module replaces 36 copies of ``main()`` (9,409 lines) and 14 of
-``run_one_class()`` (1,419 lines), plus 16 ``write_submission``, 14
-``RunConfig`` and 14 ``make_run_id``. Every one of those did the same nine
-things in the same order, with small divergences that were bugs rather than
-intent — one detector forgot to smooth before evaluating, another wrote its
-ablation row before the submission so a crash in between left the two out of
-sync.
-
 The order, once:
 
 1. scan the dataset and pick the classes to run
@@ -427,13 +419,7 @@ def _append_ablation_row(
     elapsed_min: float,
     submission_path: Path | None,
 ) -> None:
-    """One row per run, with the same columns for every detector.
-
-    Each detector previously built this dict by hand, so ``backbone`` meant
-    different things in different rows and ``notes`` was free text. The
-    detector-specific settings now go into one ``config`` column as a compact
-    key=value string, which keeps the schema stable as detectors come and go.
-    """
+    """One row per run, with the same columns for every detector."""
     settings = ",".join(
         f"{k}={v}" for k, v in sorted(config.to_dict().items()) if v not in (None, "")
     )

@@ -66,8 +66,6 @@ def test_none_scope_is_a_noop():
 
 # ── features ─────────────────────────────────────────────────────────────
 def test_names_and_columns_cannot_drift():
-    """They are produced by the same generator, which is the point of the
-    rewrite — the original built two parallel lists by hand."""
     maps = [
         np.random.default_rng(2).random((8, 8)).astype(np.float32) for _ in range(3)
     ]
@@ -159,9 +157,6 @@ def test_single_class_labels_disable_calibration_rather_than_crashing():
 
 
 def test_stratified_downsample_keeps_positives():
-    """The bug the v8 stacker existed to fix: v6 filled its sample with
-    negatives, leaving the isotonic fit almost no resolution where it
-    mattered."""
     rng = np.random.default_rng(5)
     n = 200_000
     predictions = rng.random(n)

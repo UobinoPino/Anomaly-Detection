@@ -1,9 +1,5 @@
 """Dataset records and filesystem scanning.
 
-The single source of truth for *what an image is* in this project. Previously
-this lived inside ``models/patchcore_baseline_v2.py``, which meant every other
-detector had to import PatchCore in order to list a directory.
-
 Expected on-disk layout::
 
     <data_root>/
@@ -114,14 +110,7 @@ def _images_in(directory: Path, recursive: bool = False) -> list[Path]:
 
 
 def scan_dataset(data_root: Path | str) -> list[ImageRecord]:
-    """Walk ``data_root`` and return every image as an :class:`ImageRecord`.
-
-    Raises:
-        FileNotFoundError: if ``data_root`` does not exist. The previous
-            implementation printed a message and returned an empty list, which
-            meant a mistyped ``--data-root`` produced a successful run that
-            silently scored nothing.
-    """
+    """Walk ``data_root`` and return every image as an :class:`ImageRecord`."""
     root = Path(data_root)
     if not root.is_dir():
         raise FileNotFoundError(f"data root does not exist: {root}")
@@ -178,11 +167,7 @@ def select(
     cls: str | None = None,
     split: Split | None = None,
 ) -> list[ImageRecord]:
-    """Filter records by class and/or split.
-
-    Replaces the three-line list comprehension that opened all 14 copies of
-    ``run_one_class``.
-    """
+    """Filter records by class and/or split."""
     out = list(records)
     if cls is not None:
         out = [r for r in out if r.cls == cls]
