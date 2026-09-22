@@ -1,33 +1,53 @@
 [project]
-name = "anomaly-detection"
-version = "0.1.0"
-description = "Spacepresso anomaly detection challenge"
+name = "spacepresso"
+version = "1.0.0"
+description = "Pixel-level anomaly detection on the Spacepresso dataset"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     # core scientific
     "numpy>=2.0",
     "pillow>=10.0",
     "scipy>=1.13",
-    "matplotlib>=3.8",
     "pandas>=2.2",
     "tqdm>=4.66",
+    "pyyaml>=6.0",
     # image / CV
     "opencv-python>=4.10",
     "scikit-image>=0.24",
     "scikit-learn>=1.5",
-    "albumentations>=1.4",
     # deep learning
     "torch>=2.5",
     "torchvision>=0.20",
-    "timm>=1.0.11",        # pretrained backbones (PatchCore/EfficientAD)
+    "timm>=1.0.11",
     "einops>=0.8",
-    # nice-to-have
-    "jupyterlab>=4.2",
-    "ipywidgets>=8.1",
+    # stacking
     "xgboost>=3.2.0",
     "optuna>=4.8.0",
 ]
 
+[project.optional-dependencies]
+viz = ["matplotlib>=3.8", "jupyterlab>=4.2", "ipywidgets>=8.1"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+    "black>=24.0",
+    "mypy>=1.11",
+]
+
+[project.scripts]
+spacepresso = "spacepresso.runner.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/spacepresso"]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# uv
+# ─────────────────────────────────────────────────────────────────────────────
 [[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
@@ -36,3 +56,50 @@ explicit = true
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu126" }]
 torchvision = [{ index = "pytorch-cu126" }]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tooling
+# ─────────────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: needs a GPU or the full dataset",
+    "torch: needs torch installed",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "TID", "RUF"]
+ignore = [
+    "E501",    # line length is Black's job
+    "B008",    # function call in default arg — common for Path() defaults
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Enforces the architecture: nothing may reach sideways into a sibling
+# detector, and core/ must stay dependency-free.
+ban-relative-imports = "parents"
+
+[tool.ruff.lint.isort]
+known-first-party = ["spacepresso"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+
+# core/ is the foundation — it gets the strict treatment. The rest of the
+# tree is checked loosely so the gate stays green while detectors are ported.
+[[tool.mypy.overrides]]
+module = "spacepresso.core.*"
+disallow_untyped_defs = true
+warn_return_any = true
