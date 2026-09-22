@@ -68,6 +68,20 @@ def write_submission(
     if not scored:
         raise ValueError("write_submission() received no scored records")
 
+    # Submission IDs are image stems. A collision does not fail — the CSV just
+    # carries two rows with the same ID, and whatever consumes it keeps one.
+    # That silently drops predictions on the leaderboard, so it is worth a
+    # hard failure here rather than a mystery a week later.
+    seen: dict[str, ImageRecord] = {}
+    for record, _ in scored:
+        if record.stem in seen:
+            raise ValueError(
+                f"duplicate submission ID {record.stem!r}: "
+                f"{seen[record.stem].path} and {record.path}. "
+                "Image stems must be unique across the whole test split."
+            )
+        seen[record.stem] = record
+
     maps = [resize_to_submission(m) for _r, m in scored]
     if calibrate:
         lo, hi = calibrate_to_unit(maps)
