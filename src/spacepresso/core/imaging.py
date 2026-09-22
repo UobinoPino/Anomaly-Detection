@@ -31,7 +31,8 @@ SUBMISSION_SHAPE: tuple[int, int] = (224, 224)
 def _gaussian_kernel_1d(sigma: float, radius: int) -> npt.NDArray[np.float32]:
     x = np.arange(-radius, radius + 1, dtype=np.float64)
     k = np.exp(-(x**2) / (2.0 * sigma**2))
-    return (k / k.sum()).astype(np.float32)
+    kernel: npt.NDArray[np.float32] = (k / k.sum()).astype(np.float32)
+    return kernel
 
 
 def gaussian_smooth(
@@ -53,7 +54,10 @@ def gaussian_smooth(
     except ImportError:
         pass
     else:
-        return gaussian_filter(arr, sigma=sigma, mode="reflect").astype(np.float32)
+        blurred: npt.NDArray[np.float32] = gaussian_filter(
+            arr, sigma=sigma, mode="reflect"
+        ).astype(np.float32)
+        return blurred
 
     radius = max(1, int(round(3 * sigma)))
     kernel = _gaussian_kernel_1d(sigma, radius)
@@ -103,7 +107,8 @@ def resize_bilinear(
 
     top = src[np.ix_(y0, x0)] * (1 - wx) + src[np.ix_(y0, x1)] * wx
     bottom = src[np.ix_(y1, x0)] * (1 - wx) + src[np.ix_(y1, x1)] * wx
-    return (top * (1 - wy) + bottom * wy).astype(np.float32)
+    blended: npt.NDArray[np.float32] = (top * (1 - wy) + bottom * wy).astype(np.float32)
+    return blended
 
 
 def resize_to_submission(
@@ -138,6 +143,7 @@ def normalise_to_unit(
     score: npt.NDArray[np.floating], lo: float, hi: float
 ) -> npt.NDArray[np.float32]:
     """Apply a calibration pair, clipped to [0, 1]."""
-    return np.clip((np.asarray(score, np.float32) - lo) / (hi - lo), 0.0, 1.0).astype(
-        np.float32
-    )
+    clipped: npt.NDArray[np.float32] = np.clip(
+        (np.asarray(score, np.float32) - lo) / (hi - lo), 0.0, 1.0
+    ).astype(np.float32)
+    return clipped

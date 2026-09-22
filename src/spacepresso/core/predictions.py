@@ -42,7 +42,7 @@ logger = get_logger(__name__)
 def _as_2d(array: object, dtype: npt.DTypeLike) -> npt.NDArray:
     """Coerce a torch tensor or ndarray to a 2-D NumPy array of ``dtype``."""
     if hasattr(array, "detach"):
-        array = array.detach().cpu().numpy()  # type: ignore[union-attr]
+        array = array.detach().cpu().numpy()
     out = np.asarray(array, dtype=dtype)
     if out.ndim == 3 and out.shape[0] == 1:
         out = out[0]
@@ -226,7 +226,10 @@ class PredictionWriter:
 
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(path, **arrays)
+        # savez_compressed's first positional is the file; the rest are the
+        # named arrays. mypy reads the stub's second parameter as the
+        # `allow_pickle` flag, hence the cast.
+        np.savez_compressed(path, **arrays)  # type: ignore[arg-type]
 
         self._report(path, scores)
         return path

@@ -9,7 +9,7 @@ from __future__ import annotations
 import csv
 import sys
 import zipfile
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -112,7 +112,7 @@ def zip_submission(csv_path: Path) -> Path:
     return zip_path
 
 
-def _rows_to_dict(rows, path: Path) -> dict[str, str]:
+def _rows_to_dict(rows: Iterator[list[str]], path: Path) -> dict[str, str]:
     """Skip the header and collect ``{id: payload}``."""
     if next(rows, None) is None:
         raise ValueError(f"empty submission file: {path}")
