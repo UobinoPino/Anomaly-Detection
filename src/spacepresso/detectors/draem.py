@@ -47,7 +47,7 @@ class DRAEMConfig(DetectorConfig):
     base_channels: int = 32
     total_iters: int | None = 2500
     epochs: int = 200
-    batch_size: int = 8
+    train_batch_size: int = 8
     lr: float = 1e-4
     weight_decay: float = 0.0
 
@@ -60,7 +60,7 @@ class DRAEMConfig(DetectorConfig):
             f"in{self.input_size}",
             f"b{self.base_channels}",
             f"it{self.total_iters}" if self.total_iters else f"e{self.epochs}",
-            f"bs{self.batch_size}",
+            f"bs{self.train_batch_size}",
         ]
         if self.tta != "none":
             parts.append(f"tta-{self.tta}")
@@ -269,7 +269,7 @@ class DRAEM(Detector[DRAEMConfig]):
         )
         loader = self.make_loader(
             train_good,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.train_batch_size,
             shuffle=True,
             drop_last=True,
             dataset=dataset,

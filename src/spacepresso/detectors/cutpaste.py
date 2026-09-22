@@ -74,7 +74,7 @@ class CutPasteConfig(DetectorConfig):
 
     total_iters: int | None = 2500
     epochs: int = 100
-    batch_size: int = 16
+    train_batch_size: int = 16
     lr: float = 3e-4
     weight_decay: float = 1e-5
 
@@ -101,7 +101,7 @@ class CutPasteConfig(DetectorConfig):
             short_tag(self.backbone),
             f"in{self.input_size}",
             f"it{self.total_iters}" if self.total_iters else f"e{self.epochs}",
-            f"bs{self.batch_size}",
+            f"bs{self.train_batch_size}",
             f"cs{int(self.coreset_frac * 100):02d}",
         ]
         if self.tta != "none":
@@ -227,7 +227,7 @@ class CutPaste(Detector[CutPasteConfig]):
         dataset = _PretextDataset(records, self.config)
         loader = self.make_loader(
             records,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.train_batch_size,
             shuffle=True,
             drop_last=True,
             dataset=dataset,

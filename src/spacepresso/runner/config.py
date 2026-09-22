@@ -27,7 +27,12 @@ from typing import Any
 
 import torch
 
-from spacepresso.core.paths import resolve_data_root, resolve_report_dir
+from spacepresso.core.paths import (
+    default_data_root,
+    default_report_dir,
+    resolve_data_root,
+    resolve_report_dir,
+)
 from spacepresso.postprocess.tta import TTA_MODES, TTAMode
 
 __all__ = ["DetectorConfig", "RuntimeConfig", "resolve_device"]
@@ -52,8 +57,8 @@ class RuntimeConfig:
     id — two runs differing only in ``num_workers`` are the same experiment.
     """
 
-    data_root: Path = field(default_factory=lambda: Path("data"))
-    report_dir: Path = field(default_factory=lambda: Path("baseline_out"))
+    data_root: Path = field(default_factory=default_data_root)
+    report_dir: Path = field(default_factory=default_report_dir)
 
     device: str = "auto"
     num_workers: int = 4

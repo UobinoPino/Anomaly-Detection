@@ -65,7 +65,7 @@ class CFAConfig(DetectorConfig):
 
     total_iters: int | None = 2500
     epochs: int = 50
-    batch_size: int = 4
+    train_batch_size: int = 4
     lr: float = 1e-3
     weight_decay: float = 5e-4
 
@@ -223,7 +223,7 @@ class CFA(Detector[CFAConfig]):
 
         loader = self.make_loader(
             train_good,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.train_batch_size,
             shuffle=True,
             drop_last=True,
         )

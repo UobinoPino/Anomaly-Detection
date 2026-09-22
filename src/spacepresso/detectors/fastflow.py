@@ -44,7 +44,7 @@ class FastFlowConfig(DetectorConfig):
 
     total_iters: int | None = 2500
     epochs: int = 100
-    batch_size: int = 4
+    train_batch_size: int = 4
     lr: float = 1e-3
     weight_decay: float = 1e-5
     norm_stat_images: int = 64
@@ -64,7 +64,7 @@ class FastFlowConfig(DetectorConfig):
             f"hr{self.hidden_ratio:g}",
             f"c{self.clamp:g}",
             f"it{self.total_iters}" if self.total_iters else f"e{self.epochs}",
-            f"bs{self.batch_size}",
+            f"bs{self.train_batch_size}",
         ]
         if self.tta != "none":
             parts.append(f"tta-{self.tta}")
@@ -230,7 +230,7 @@ class FastFlow(Detector[FastFlowConfig]):
     def fit(self, train_good: Sequence[ImageRecord]) -> None:
         loader = self.make_loader(
             train_good,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.train_batch_size,
             shuffle=True,
             drop_last=True,
         )

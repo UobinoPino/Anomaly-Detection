@@ -46,7 +46,7 @@ class EfficientADConfig(DetectorConfig):
 
     total_iters: int | None = 2500
     epochs: int = 200
-    batch_size: int = 16
+    train_batch_size: int = 16
     lr: float = 1e-4
     weight_decay: float = 1e-5
     hard_mining_pct: float = 0.10
@@ -70,7 +70,7 @@ class EfficientADConfig(DetectorConfig):
         parts.append(
             f"it{self.total_iters}" if self.total_iters else f"e{self.epochs}"
         )
-        parts.append(f"bs{self.batch_size}")
+        parts.append(f"bs{self.train_batch_size}")
         if self.tta != "none":
             parts.append(f"tta-{self.tta}")
         return parts
@@ -209,7 +209,7 @@ class EfficientAD(Detector[EfficientADConfig]):
     def fit(self, train_good: Sequence[ImageRecord]) -> None:
         loader = self.make_loader(
             train_good,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.train_batch_size,
             shuffle=True,
             drop_last=True,
         )

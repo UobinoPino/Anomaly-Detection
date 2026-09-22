@@ -1,0 +1,17 @@
+# FastFlow on a WideResNet pyramid. Density-based, so its errors are
+# uncorrelated with the nearest-neighbour detectors'.
+detector: fastflow
+
+runtime:
+  num_workers: 8
+  run_tag: fastflow-wrn50
+
+config:
+  backbone: wide_resnet50_2
+  feature_layers: [2, 3]
+  input_size: 256
+  n_blocks: 8
+  hidden_ratio: 1.0
+  total_iters: 2500
+  train_batch_size: 4
+  tta: hvflip

@@ -56,7 +56,7 @@ class UniADConfig(DetectorConfig):
 
     total_iters: int | None = 2500
     epochs: int = 100
-    batch_size: int = 8
+    train_batch_size: int = 8
     lr: float = 1e-4
     weight_decay: float = 1e-4
     norm_stat_images: int = 64
@@ -294,7 +294,7 @@ class UniAD(Detector[UniADConfig]):
     def fit(self, train_good: Sequence[ImageRecord]) -> None:
         loader = self.make_loader(
             train_good,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.train_batch_size,
             shuffle=True,
             drop_last=True,
         )

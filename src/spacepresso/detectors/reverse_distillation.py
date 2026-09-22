@@ -58,7 +58,7 @@ class ReverseDistillationConfig(DetectorConfig):
 
     total_iters: int | None = 2500
     epochs: int = 100
-    batch_size: int = 8
+    train_batch_size: int = 8
     lr: float = 5e-4
     weight_decay: float = 1e-5
 
@@ -94,7 +94,7 @@ class ReverseDistillationConfig(DetectorConfig):
             f"L{layers}",
             f"in{self.input_size}",
             f"it{self.total_iters}" if self.total_iters else f"e{self.epochs}",
-            f"bs{self.batch_size}",
+            f"bs{self.train_batch_size}",
             f"lr{self.lr:.0e}",
             self.amap_mode,
         ]
@@ -293,7 +293,7 @@ class ReverseDistillation(Detector[ReverseDistillationConfig]):
     def fit(self, train_good: Sequence[ImageRecord]) -> None:
         loader = self.make_loader(
             train_good,
-            batch_size=self.config.batch_size,
+            batch_size=self.config.train_batch_size,
             shuffle=True,
             drop_last=True,
         )
